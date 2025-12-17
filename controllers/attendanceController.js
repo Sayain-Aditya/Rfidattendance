@@ -15,21 +15,27 @@ export const getAttendance = async (req, res) => {
 
 export const scanCard = async (req, res) => {
   try {
-    const { uid } = req.body;
+    let { uid } = req.body;
     if (!uid) {
       return res.status(400).json({ message: "UID required" });
     }
 
-    // 1️⃣ Find user
-    const user = await User.findOne({ uid });
+    // ✅ NORMALIZE UID (remove spaces, uppercase)
+    const cleanUID = uid.replace(/\s+/g, "").toUpperCase();
+
+    // ✅ FIND USER (match even if DB has spaces)
+    const user = await User.findOne({
+      uid: { $regex: new RegExp(cleanUID.split("").join("\\s*"), "i") }
+    });
+
     if (!user) {
       return res.status(404).json({ message: "User not registered" });
     }
 
-    // 2️⃣ Get today
+    // 📅 Get today's date
     const today = new Date().toISOString().split("T")[0];
 
-    // 3️⃣ Find today's attendance
+    // 📄 Find today's attendance
     let attendance = await Attendance.findOne({
       user: user._id,
       date: today
@@ -41,7 +47,7 @@ export const scanCard = async (req, res) => {
       hour12: true
     });
 
-    // 4️⃣ FIRST SCAN → CHECK IN
+    // 🟢 FIRST SCAN → CHECK IN
     if (!attendance) {
       attendance = await Attendance.create({
         user: user._id,
@@ -59,7 +65,7 @@ export const scanCard = async (req, res) => {
       });
     }
 
-    // 5️⃣ SECOND SCAN → CHECK OUT
+    // 🔵 SECOND SCAN → CHECK OUT
     if (attendance.status === "IN") {
       attendance.checkOut = timeNow;
       attendance.status = "OUT";
@@ -74,7 +80,7 @@ export const scanCard = async (req, res) => {
       });
     }
 
-    // 6️⃣ ALREADY COMPLETED
+    // 🔴 ALREADY DONE
     return res.status(400).json({
       success: false,
       message: "Attendance already completed for today"
@@ -85,3 +91,4 @@ export const scanCard = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
