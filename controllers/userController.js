@@ -48,3 +48,34 @@ export const adminLogin = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
+export const getUsers = async (req, res) => {
+  try {
+    const { role, page = 1, limit = 50 } = req.query;
+    
+    const query = role ? { role } : {};
+    
+    const users = await User.find(query)
+      .select("-__v")
+      .sort({ createdAt: -1 })
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    const total = await User.countDocuments(query);
+
+    res.json({
+      success: true,
+      data: users,
+      pagination: {
+        current: parseInt(page),
+        total: Math.ceil(total / limit),
+        count: users.length
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      success: false,
+      message: err.message 
+    });
+  }
+};
