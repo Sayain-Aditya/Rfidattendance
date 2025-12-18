@@ -17,46 +17,60 @@ export const getAttendance = async (req, res) => {
 // ================= SCAN CARD =================
 export const scanCard = async (req, res) => {
   try {
-    let { uid } = req.body;
+    let { uid, deviceTime } = req.body;
+
     if (!uid) {
-      return res.status(400).json({ message: "UID required" });
+      return res.status(400).json({ success: false, message: "UID required" });
     }
 
-    // ✅ Normalize UID
+    // ================= UID NORMALIZE =================
     const cleanUID = uid.replace(/\s+/g, "").toUpperCase();
 
-    // ✅ Find user (supports space / no-space UID)
     const user = await User.findOne({
       uid: { $regex: new RegExp(cleanUID.split("").join("\\s*"), "i") }
     });
 
+    // ❌ INVALID CARD
     if (!user) {
-      return res.status(404).json({ message: "User not registered" });
+      return res.json({
+        success: false,
+        type: "INVALID",
+        message: "Invalid Card"
+      });
     }
 
-    // ================= IST TIME FIX =================
-    const now = new Date();
-    const istNow = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+    // ================= DATE & TIME =================
+    let date, timeNow;
 
-    const today = istNow.toISOString().split("T")[0];
+    if (deviceTime) {
+      // deviceTime format: "2025-12-18 09:12 AM"
+      const parts = deviceTime.split(" ");
+      date = parts[0];
+      timeNow = parts.slice(1).join(" ");
+    } else {
+      // fallback → server IST
+      const now = new Date();
+      const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
 
-    const timeNow = istNow.toLocaleTimeString("en-IN", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true
-    });
+      date = ist.toISOString().split("T")[0];
+      timeNow = ist.toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true
+      });
+    }
 
     // ================= FIND TODAY =================
     let attendance = await Attendance.findOne({
       user: user._id,
-      date: today
+      date
     });
 
-    // 🟢 FIRST SCAN → IN
+    // 🟢 FIRST SCAN (AUTO RESET EVERY DAY)
     if (!attendance) {
       attendance = await Attendance.create({
         user: user._id,
-        date: today,
+        date,
         checkIn: timeNow,
         status: "IN"
       });
@@ -66,11 +80,11 @@ export const scanCard = async (req, res) => {
         type: "IN",
         name: user.name,
         time: timeNow,
-        message: "Check-In Done"
+        message: "Check-In Successful"
       });
     }
 
-    // 🔵 SECOND SCAN → OUT
+    // 🔵 SECOND SCAN
     if (attendance.status === "IN") {
       attendance.checkOut = timeNow;
       attendance.status = "OUT";
@@ -81,18 +95,22 @@ export const scanCard = async (req, res) => {
         type: "OUT",
         name: user.name,
         time: timeNow,
-        message: "Check-Out Done"
+        message: "Check-Out Successful"
       });
     }
 
-    // 🔴 ALREADY DONE
-    return res.status(400).json({
+    // 🔴 ALREADY COMPLETED
+    return res.json({
       success: false,
+      type: "DONE",
       message: "Attendance already completed for today"
     });
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    console.error("SCAN ERROR:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
   }
 };
