@@ -1,10 +1,11 @@
 import User from "../models/User.js";
 import Attendance from "../models/Attendance.js";
 
+// ================= GET ALL ATTENDANCE =================
 export const getAttendance = async (req, res) => {
   try {
     const attendance = await Attendance.find()
-      .populate('user', 'name uid')
+      .populate("user", "name uid")
       .sort({ date: -1 });
 
     res.json({ attendance });
@@ -13,6 +14,7 @@ export const getAttendance = async (req, res) => {
   }
 };
 
+// ================= SCAN CARD =================
 export const scanCard = async (req, res) => {
   try {
     let { uid } = req.body;
@@ -20,10 +22,10 @@ export const scanCard = async (req, res) => {
       return res.status(400).json({ message: "UID required" });
     }
 
-    // ✅ NORMALIZE UID (remove spaces, uppercase)
+    // ✅ Normalize UID
     const cleanUID = uid.replace(/\s+/g, "").toUpperCase();
 
-    // ✅ FIND USER (match even if DB has spaces)
+    // ✅ Find user (supports space / no-space UID)
     const user = await User.findOne({
       uid: { $regex: new RegExp(cleanUID.split("").join("\\s*"), "i") }
     });
@@ -32,22 +34,25 @@ export const scanCard = async (req, res) => {
       return res.status(404).json({ message: "User not registered" });
     }
 
-    // 📅 Get today's date
-    const today = new Date().toISOString().split("T")[0];
+    // ================= IST TIME FIX =================
+    const now = new Date();
+    const istNow = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
 
-    // 📄 Find today's attendance
-    let attendance = await Attendance.findOne({
-      user: user._id,
-      date: today
-    });
+    const today = istNow.toISOString().split("T")[0];
 
-    const timeNow = new Date().toLocaleTimeString("en-IN", {
+    const timeNow = istNow.toLocaleTimeString("en-IN", {
       hour: "2-digit",
       minute: "2-digit",
       hour12: true
     });
 
-    // 🟢 FIRST SCAN → CHECK IN
+    // ================= FIND TODAY =================
+    let attendance = await Attendance.findOne({
+      user: user._id,
+      date: today
+    });
+
+    // 🟢 FIRST SCAN → IN
     if (!attendance) {
       attendance = await Attendance.create({
         user: user._id,
@@ -65,7 +70,7 @@ export const scanCard = async (req, res) => {
       });
     }
 
-    // 🔵 SECOND SCAN → CHECK OUT
+    // 🔵 SECOND SCAN → OUT
     if (attendance.status === "IN") {
       attendance.checkOut = timeNow;
       attendance.status = "OUT";
@@ -91,4 +96,3 @@ export const scanCard = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-
