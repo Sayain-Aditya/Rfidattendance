@@ -1,27 +1,32 @@
 import User from "../models/User.js";
 import Attendance from "../models/Attendance.js";
 import { 
-  getISTDate, 
-  getISTTime, 
-  normalizeUID, 
-  createUIDRegex, 
-  getAttendanceStatus 
-} from "../utils/attendanceUtils.js";
-import { checkAndMarkAbsent } from "../utils/lazyAbsentMarking.js";
+  resolveLazyAttendance,
+  getISTTime,
+  getAttendanceStatus,
+  normalizeUID,
+  createUIDRegex
+} from "../utils/lazyAttendance.js";
 
 /**
- * ENTERPRISE RFID SCAN CARD API
- * Handles check-in/check-out with business rules
- * Supports flexible UID matching and IST timezone
+ * Get current IST date
+ */
+const getISTDate = () => {
+  return new Date().toLocaleString("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  });
+};
+
+/**
+ * RFID SCAN CARD API WITH LAZY ATTENDANCE
  */
 export const scanCard = async (req, res) => {
   try {
-    // Lazy absent marking for Vercel (runs once per day)
-    await checkAndMarkAbsent();
-    
     const { uid } = req.body;
 
-    // Validate UID input
     if (!uid) {
       return res.status(400).json({
         success: false,
@@ -29,7 +34,7 @@ export const scanCard = async (req, res) => {
       });
     }
 
-    // Find user with flexible UID matching (with or without spaces)
+    // Find user with flexible UID matching
     const uidRegex = createUIDRegex(uid);
     const user = await User.findOne({ uid: uidRegex });
 
@@ -41,11 +46,14 @@ export const scanCard = async (req, res) => {
       });
     }
 
+    // RESOLVE LAZY ATTENDANCE FIRST
+    await resolveLazyAttendance(user._id);
+
     // Get current IST date and time
     const currentDate = getISTDate();
     const currentTime = getISTTime();
 
-    // Find or create today's attendance record
+    // Find today's attendance record
     let attendance = await Attendance.findOne({
       user: user._id,
       date: currentDate
@@ -53,7 +61,6 @@ export const scanCard = async (req, res) => {
 
     // FIRST SCAN - CHECK IN
     if (!attendance) {
-      // Determine attendance status based on check-in time
       const attendanceType = getAttendanceStatus(currentTime);
       
       attendance = await Attendance.create({
@@ -90,7 +97,7 @@ export const scanCard = async (req, res) => {
       });
     }
 
-    // BLOCK MULTIPLE SCANS AFTER OUT
+    // BLOCK FURTHER SCANS
     return res.json({
       success: false,
       type: "BLOCKED",
@@ -107,26 +114,32 @@ export const scanCard = async (req, res) => {
 };
 
 /**
- * GET ALL ATTENDANCE RECORDS
- * Returns paginated attendance records with user details
+ * GET ALL ATTENDANCE WITH LAZY RESOLUTION
  */
 export const getAttendance = async (req, res) => {
   try {
-    const { page = 1, limit = 50 } = req.query;
+    const { page = 1, limit = 50, userId } = req.query;
     
-    const attendance = await Attendance.find()
+    // If userId provided, resolve lazy attendance for that user
+    if (userId) {
+      await resolveLazyAttendance(userId);
+    }
+    
+    const query = userId ? { user: userId } : {};
+    
+    const attendance = await Attendance.find(query)
       .populate("user", "name uid role")
       .sort({ date: -1, createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
 
-    const total = await Attendance.countDocuments();
+    const total = await Attendance.countDocuments(query);
 
     res.json({
       success: true,
       data: attendance,
       pagination: {
-        current: page,
+        current: parseInt(page),
         total: Math.ceil(total / limit),
         count: attendance.length
       }
@@ -141,15 +154,13 @@ export const getAttendance = async (req, res) => {
 };
 
 /**
- * MONTHLY ATTENDANCE API
- * Returns summary and detailed records for a specific user and month
+ * MONTHLY ATTENDANCE WITH LAZY RESOLUTION
  */
 export const getMonthlyAttendance = async (req, res) => {
   try {
     const { userId } = req.params;
     const { month, year } = req.query;
 
-    // Validate required parameters
     if (!month || !year) {
       return res.status(400).json({
         success: false,
@@ -157,7 +168,6 @@ export const getMonthlyAttendance = async (req, res) => {
       });
     }
 
-    // Validate user exists
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({
@@ -166,23 +176,47 @@ export const getMonthlyAttendance = async (req, res) => {
       });
     }
 
+    // RESOLVE LAZY ATTENDANCE FIRST
+    await resolveLazyAttendance(userId);
+
     // Create date range for the month
     const startDate = `${year}-${month.padStart(2, '0')}-01`;
-    const endDate = `${year}-${month.padStart(2, '0')}-31`;
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${month.padStart(2, '0')}-${daysInMonth.toString().padStart(2, '0')}`;
 
-    // Fetch attendance records for the month
+    // Fetch attendance records
     const records = await Attendance.find({
       user: userId,
       date: { $gte: startDate, $lte: endDate }
     }).sort({ date: 1 });
 
-    // Calculate summary statistics
+    // Auto-fill missing days as ABSENT
+    const allDates = [];
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = `${year}-${month.padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+      const existing = records.find(r => r.date === dateStr);
+      
+      if (existing) {
+        allDates.push(existing);
+      } else {
+        // Create absent record for missing day
+        const absentRecord = await Attendance.create({
+          user: userId,
+          date: dateStr,
+          status: "ABSENT",
+          scanStatus: "NONE"
+        });
+        allDates.push(absentRecord);
+      }
+    }
+
+    // Calculate summary
     const summary = {
-      PRESENT: records.filter(r => r.status === "PRESENT").length,
-      HALF_DAY: records.filter(r => r.status === "HALF_DAY").length,
-      LATE: records.filter(r => r.status === "LATE").length,
-      ABSENT: records.filter(r => r.status === "ABSENT").length,
-      totalDays: records.length
+      PRESENT: allDates.filter(r => r.status === "PRESENT").length,
+      HALF_DAY: allDates.filter(r => r.status === "HALF_DAY").length,
+      LATE: allDates.filter(r => r.status === "LATE").length,
+      ABSENT: allDates.filter(r => r.status === "ABSENT").length,
+      totalDays: allDates.length
     };
 
     res.json({
@@ -194,7 +228,7 @@ export const getMonthlyAttendance = async (req, res) => {
       },
       period: `${month}/${year}`,
       summary,
-      records
+      records: allDates
     });
 
   } catch (error) {
@@ -207,23 +241,32 @@ export const getMonthlyAttendance = async (req, res) => {
 };
 
 /**
- * MANUAL TRIGGER FOR MARKING ABSENT USERS
- * Admin endpoint to manually trigger absent marking process
+ * MANUAL ABSENT MARKING (ADMIN)
  */
 export const markAbsentUsers = async (req, res) => {
   try {
-    const { checkAndMarkAbsent } = await import("../utils/lazyAbsentMarking.js");
-    await checkAndMarkAbsent();
+    const { userId } = req.body;
+    
+    if (userId) {
+      // Mark specific user
+      await resolveLazyAttendance(userId);
+    } else {
+      // Mark all users
+      const users = await User.find({ role: "Employee" });
+      for (const user of users) {
+        await resolveLazyAttendance(user._id);
+      }
+    }
     
     res.json({
       success: true,
-      message: "Absent users marked successfully"
+      message: "Lazy attendance resolved successfully"
     });
   } catch (error) {
     console.error("❌ Mark Absent Error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to mark absent users"
+      message: "Failed to resolve attendance"
     });
   }
 };
