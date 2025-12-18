@@ -8,13 +8,14 @@ const attendanceSchema = new mongoose.Schema({
   },
   date: {
     type: String, // YYYY-MM-DD (IST)
-    required: true
+    required: true,
+    index: false
   },
   checkIn: String, // HH:MM AM/PM format
   checkOut: String, // HH:MM AM/PM format
   status: {
     type: String,
-    enum: ["PRESENT", "HALF_DAY", "LATE", "ABSENT", "OUT"],
+    enum: ["PRESENT", "HALF_DAY", "ABSENT"],
     default: "ABSENT"
   },
   scanStatus: {
@@ -26,7 +27,6 @@ const attendanceSchema = new mongoose.Schema({
 
 // Compound index for efficient queries
 attendanceSchema.index({ user: 1, date: 1 }, { unique: true });
-attendanceSchema.index({ date: 1 });
 attendanceSchema.index({ status: 1 });
 
 export default mongoose.model("Attendance", attendanceSchema);

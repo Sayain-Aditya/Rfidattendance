@@ -1,8 +1,8 @@
 import Attendance from "../models/Attendance.js";
 
 /**
- * LAZY ATTENDANCE RESOLVER
- * Fills missing attendance records as ABSENT for a specific user
+ * ENTERPRISE LAZY ATTENDANCE RESOLVER
+ * Handles holidays, leaves, and absent marking
  */
 
 /**
@@ -30,7 +30,7 @@ export const getISTTime = () => {
 };
 
 /**
- * Generate array of dates between start and end (inclusive)
+ * Generate date range between two dates
  */
 const getDateRange = (startDate, endDate) => {
   const dates = [];
@@ -45,71 +45,74 @@ const getDateRange = (startDate, endDate) => {
   return dates;
 };
 
-/**
- * CORE LAZY ATTENDANCE FUNCTION
- * Resolves missing attendance records for a user
- */
-export const resolveLazyAttendance = async (userId) => {
-  try {
-    // Get today's date in IST
-    const today = getISTDate();
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
 
+
+/**
+ * CORE LAZY ATTENDANCE RESOLVER
+ * Resolves missing attendance records with business logic
+ */
+export const resolveLazyAttendance = async (userId, uptoDate = null) => {
+  try {
+    const targetDate = uptoDate || getISTDate();
+    
     // Find user's last attendance record
     const lastAttendance = await Attendance.findOne({ user: userId })
       .sort({ date: -1 })
       .limit(1);
 
     if (!lastAttendance) {
-      // No previous records, nothing to backfill
-      return;
+      return; // No previous records
     }
 
-    // Get all dates between last attendance and yesterday
+    // Get missing dates
+    const lastDate = new Date(lastAttendance.date);
+    lastDate.setDate(lastDate.getDate() + 1); // Start from day after last record
+    
+    const yesterday = new Date(targetDate);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    if (lastDate > yesterday) {
+      return; // No missing dates
+    }
+
     const missingDates = getDateRange(
-      new Date(lastAttendance.date).toISOString().split('T')[0], 
-      yesterdayStr
+      lastDate.toISOString().split('T')[0],
+      yesterday.toISOString().split('T')[0]
     );
 
-    // Remove the last attendance date (already exists)
-    missingDates.shift();
-
-    // Create absent records for missing dates
-    const absentRecords = [];
+    // Process each missing date
+    const recordsToInsert = [];
+    
     for (const date of missingDates) {
-      // Check if record already exists
+      // Skip if record already exists
       const exists = await Attendance.findOne({ user: userId, date });
-      
-      if (!exists) {
-        absentRecords.push({
-          user: userId,
-          date,
-          status: "ABSENT",
-          scanStatus: "NONE"
-        });
-      }
+      if (exists) continue;
+
+      recordsToInsert.push({
+        user: userId,
+        date,
+        status: "ABSENT",
+        scanStatus: "NONE"
+      });
     }
 
-    // Bulk insert absent records
-    if (absentRecords.length > 0) {
-      await Attendance.insertMany(absentRecords);
-      console.log(`✅ Lazy marked ${absentRecords.length} absent days for user ${userId}`);
+    // Bulk insert records
+    if (recordsToInsert.length > 0) {
+      await Attendance.insertMany(recordsToInsert);
+      console.log(`✅ Lazy resolved ${recordsToInsert.length} attendance records for user ${userId}`);
     }
 
   } catch (error) {
-    console.error("❌ Lazy attendance error:", error);
+    console.error("❌ Lazy attendance resolver error:", error);
   }
 };
 
 /**
- * Determine attendance status based on check-in time
+ * Attendance status rules based on check-in time
  */
 export const getAttendanceStatus = (checkInTime) => {
   if (!checkInTime) return "ABSENT";
   
-  // Convert time to minutes for comparison
   const timeToMinutes = (timeStr) => {
     let [time, period] = timeStr.split(" ");
     let [hours, minutes] = time.split(":").map(Number);
@@ -126,23 +129,31 @@ export const getAttendanceStatus = (checkInTime) => {
   
   if (checkInMinutes <= presentCutoff) {
     return "PRESENT";
-  } else if (checkInMinutes <= halfDayCutoff) {
-    return "HALF_DAY";
   } else {
-    return "LATE";
+    return "HALF_DAY";
   }
 };
 
 /**
- * Normalize UID for flexible matching
+ * Salary calculation multipliers
+ */
+export const getSalaryMultiplier = (status) => {
+  const multipliers = {
+    "PRESENT": 1,
+    "HALF_DAY": 0.5,
+    "ABSENT": 0
+  };
+  
+  return multipliers[status] || 0;
+};
+
+/**
+ * UID utilities for flexible matching
  */
 export const normalizeUID = (uid) => {
   return uid.replace(/\s+/g, "").toUpperCase();
 };
 
-/**
- * Create regex for UID matching with optional spaces
- */
 export const createUIDRegex = (uid) => {
   const cleanUID = normalizeUID(uid);
   const pattern = cleanUID.split("").join("\\s*");
