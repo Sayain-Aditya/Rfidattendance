@@ -9,9 +9,6 @@ import {
   getSalaryMultiplier
 } from "../utils/lazyAttendance.js";
 
-/**
- * Get IST date
- */
 const getISTDate = () => {
   return new Date().toLocaleString("en-CA", {
     timeZone: "Asia/Kolkata",
@@ -21,10 +18,6 @@ const getISTDate = () => {
   });
 };
 
-/**
- * RFID SCAN CARD API WITH OFFLINE DEVICE SUPPORT
- * Accepts deviceTime from ESP32 for offline sync
- */
 export const scanCard = async (req, res) => {
   try {
     const { uid, deviceTime } = req.body;
@@ -36,7 +29,6 @@ export const scanCard = async (req, res) => {
       });
     }
 
-    // Find user with flexible UID matching
     const uidRegex = createUIDRegex(uid);
     const user = await User.findOne({ uid: uidRegex });
 
@@ -48,11 +40,9 @@ export const scanCard = async (req, res) => {
       });
     }
 
-    // Use device time if provided, otherwise server IST time
     let scanDate, scanTime;
     
     if (deviceTime) {
-      // deviceTime format: "2024-01-15 09:30 AM" or "2024-01-15T09:30:00"
       const deviceDateTime = new Date(deviceTime);
       scanDate = deviceDateTime.toISOString().split('T')[0];
       scanTime = deviceDateTime.toLocaleString("en-US", {
@@ -65,16 +55,13 @@ export const scanCard = async (req, res) => {
       scanTime = getISTTime();
     }
 
-    // RESOLVE LAZY ATTENDANCE FIRST
     await resolveLazyAttendance(user._id, scanDate);
 
-    // Find attendance record for scan date
     let attendance = await Attendance.findOne({
       user: user._id,
       date: scanDate
     });
 
-    // FIRST SCAN - CHECK IN
     if (!attendance) {
       const attendanceType = getAttendanceStatus(scanTime);
       
@@ -97,7 +84,6 @@ export const scanCard = async (req, res) => {
       });
     }
 
-    // SECOND SCAN - CHECK OUT
     if (attendance.scanStatus === "IN") {
       attendance.checkOut = scanTime;
       attendance.scanStatus = "OUT";
@@ -114,7 +100,6 @@ export const scanCard = async (req, res) => {
       });
     }
 
-    // PREVENT DUPLICATE SCANS
     return res.json({
       success: false,
       type: "BLOCKED",
@@ -130,9 +115,6 @@ export const scanCard = async (req, res) => {
   }
 };
 
-/**
- * GET ATTENDANCE WITH LAZY RESOLUTION
- */
 export const getAttendance = async (req, res) => {
   try {
     const { page = 1, limit = 50, userId } = req.query;
@@ -169,9 +151,6 @@ export const getAttendance = async (req, res) => {
   }
 };
 
-/**
- * MONTHLY ATTENDANCE WITH LAZY RESOLUTION
- */
 export const getMonthlyAttendance = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -192,20 +171,17 @@ export const getMonthlyAttendance = async (req, res) => {
       });
     }
 
-    // RESOLVE LAZY ATTENDANCE FIRST
     await resolveLazyAttendance(userId);
 
     const startDate = `${year}-${month.padStart(2, '0')}-01`;
     const daysInMonth = new Date(year, month, 0).getDate();
     const endDate = `${year}-${month.padStart(2, '0')}-${daysInMonth.toString().padStart(2, '0')}`;
 
-    // Fetch records and fill missing dates
     const records = await Attendance.find({
       user: userId,
       date: { $gte: startDate, $lte: endDate }
     }).sort({ date: 1 });
 
-    // Auto-fill missing days
     const allDates = [];
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${year}-${month.padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
@@ -224,7 +200,6 @@ export const getMonthlyAttendance = async (req, res) => {
       }
     }
 
-    // Calculate summary
     const summary = {
       PRESENT: allDates.filter(r => r.status === "PRESENT").length,
       HALF_DAY: allDates.filter(r => r.status === "HALF_DAY").length,
@@ -253,9 +228,6 @@ export const getMonthlyAttendance = async (req, res) => {
   }
 };
 
-/**
- * SALARY CALCULATION WITH LAZY RESOLUTION
- */
 export const getSalaryCalculation = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -276,7 +248,6 @@ export const getSalaryCalculation = async (req, res) => {
       });
     }
 
-    // RESOLVE LAZY ATTENDANCE FIRST
     await resolveLazyAttendance(userId);
 
     const startDate = `${year}-${month.padStart(2, '0')}-01`;
@@ -288,7 +259,6 @@ export const getSalaryCalculation = async (req, res) => {
       date: { $gte: startDate, $lte: endDate }
     });
 
-    // Calculate payable days
     let payableDays = 0;
     const breakdown = {};
 
@@ -299,7 +269,6 @@ export const getSalaryCalculation = async (req, res) => {
       breakdown[record.status] = (breakdown[record.status] || 0) + multiplier;
     }
 
-    // Calculate salary
     const dailyRate = parseFloat(baseSalary) / daysInMonth;
     const payableSalary = payableDays * dailyRate;
 
@@ -330,9 +299,6 @@ export const getSalaryCalculation = async (req, res) => {
   }
 };
 
-/**
- * MANUAL LAZY RESOLUTION (ADMIN)
- */
 export const markAbsentUsers = async (req, res) => {
   try {
     const { userId } = req.body;
