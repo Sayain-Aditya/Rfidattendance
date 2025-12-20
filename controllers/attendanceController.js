@@ -39,10 +39,10 @@ export const scanCard = async (req, res) => {
 
     if (attendance && attendance.lastScanAt) {
       const timeDiff = (now - attendance.lastScanAt) / 1000;
-      if (timeDiff < 60) {
+      if (timeDiff < 10) {
         return res.json({
           success: false,
-          message: "Duplicate scan - Please wait 60 seconds"
+          message: "Duplicate scan - Please wait 10 seconds"
         });
       }
     }
