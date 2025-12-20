@@ -13,9 +13,17 @@ const attendanceSchema = new mongoose.Schema({
   },
   checkIn: String,
   checkOut: String,
+  lastScanAt: {
+    type: Date,
+    default: null
+  },
+  workMinutes: {
+    type: Number,
+    default: 0
+  },
   status: {
     type: String,
-    enum: ["PRESENT", "HALF_DAY", "ABSENT"],
+    enum: ["IN", "OUT", "HALF_DAY", "PRESENT", "ABSENT"],
     default: "ABSENT"
   },
   scanStatus: {

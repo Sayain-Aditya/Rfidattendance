@@ -1,26 +1,12 @@
 import User from "../models/User.js";
 import Attendance from "../models/Attendance.js";
-import { 
-  resolveLazyAttendance,
-  getISTTime,
-  getAttendanceStatus,
-  normalizeUID,
-  createUIDRegex,
-  getSalaryMultiplier
-} from "../utils/lazyAttendance.js";
-
-const getISTDate = () => {
-  return new Date().toLocaleString("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  });
-};
+import Shift from "../models/Shift.js";
+import { getAttendanceDate, getISTTime, calculateWorkMinutes, getFinalStatus, isLateEntry } from "../utils/istTime.js";
+import { normalizeUID, createUIDRegex, lazyMarkAbsent, fillMissingAttendance } from "../utils/lazyAttendance.js";
 
 export const scanCard = async (req, res) => {
   try {
-    const { uid, deviceTime } = req.body;
+    const { uid } = req.body;
 
     if (!uid) {
       return res.status(400).json({
@@ -30,7 +16,7 @@ export const scanCard = async (req, res) => {
     }
 
     const uidRegex = createUIDRegex(uid);
-    const user = await User.findOne({ uid: uidRegex });
+    const user = await User.findOne({ uid: uidRegex }).populate('currentShift');
 
     if (!user) {
       return res.json({
@@ -40,69 +26,78 @@ export const scanCard = async (req, res) => {
       });
     }
 
-    let scanDate, scanTime;
-    
-    if (deviceTime) {
-      const deviceDateTime = new Date(deviceTime);
-      scanDate = deviceDateTime.toISOString().split('T')[0];
-      scanTime = deviceDateTime.toLocaleString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true
-      });
-    } else {
-      scanDate = getISTDate();
-      scanTime = getISTTime();
-    }
+    const userShift = user.currentShift;
 
-    await resolveLazyAttendance(user._id, scanDate);
+    const scanDate = getAttendanceDate();
+    const scanTime = getISTTime();
+    const now = new Date();
 
     let attendance = await Attendance.findOne({
       user: user._id,
       date: scanDate
     });
 
+    if (attendance && attendance.lastScanAt) {
+      const timeDiff = (now - attendance.lastScanAt) / 1000;
+      if (timeDiff < 60) {
+        return res.json({
+          success: false,
+          message: "Duplicate scan - Please wait 60 seconds"
+        });
+      }
+    }
+
     if (!attendance) {
-      const attendanceType = getAttendanceStatus(scanTime);
-      
       attendance = await Attendance.create({
         user: user._id,
         date: scanDate,
         checkIn: scanTime,
-        status: attendanceType,
-        scanStatus: "IN"
+        status: "IN",
+        scanStatus: "IN",
+        lastScanAt: now,
+        workMinutes: 0
       });
 
       return res.json({
         success: true,
         type: "IN",
-        attendanceType,
         name: user.name,
         time: scanTime,
-        date: scanDate,
-        message: `Check-In Successful - ${attendanceType}`
+        date: scanDate
       });
     }
 
     if (attendance.scanStatus === "IN") {
+      const workMinutes = calculateWorkMinutes(attendance.checkIn, scanTime);
+      const finalStatus = getFinalStatus(workMinutes, userShift);
+      const late = isLateEntry(attendance.checkIn, userShift);
+      
       attendance.checkOut = scanTime;
       attendance.scanStatus = "OUT";
+      attendance.status = finalStatus;
+      attendance.workMinutes = workMinutes;
+      attendance.lastScanAt = now;
       await attendance.save();
 
       return res.json({
         success: true,
         type: "OUT",
-        attendanceType: attendance.status,
         name: user.name,
         time: scanTime,
         date: scanDate,
-        message: "Check-Out Successful"
+        workMinutes,
+        status: finalStatus,
+        isLate: late,
+        shift: userShift ? {
+          name: userShift.shiftName,
+          startTime: userShift.startTime,
+          endTime: userShift.endTime
+        } : null
       });
     }
 
     return res.json({
       success: false,
-      type: "BLOCKED",
       message: "Attendance already completed for this date"
     });
 
@@ -119,9 +114,7 @@ export const getAttendance = async (req, res) => {
   try {
     const { page = 1, limit = 50, userId } = req.query;
     
-    if (userId) {
-      await resolveLazyAttendance(userId);
-    }
+    await lazyMarkAbsent();
     
     const query = userId ? { user: userId } : {};
     
@@ -171,41 +164,29 @@ export const getMonthlyAttendance = async (req, res) => {
       });
     }
 
-    await resolveLazyAttendance(userId);
-
     const startDate = `${year}-${month.padStart(2, '0')}-01`;
     const daysInMonth = new Date(year, month, 0).getDate();
     const endDate = `${year}-${month.padStart(2, '0')}-${daysInMonth.toString().padStart(2, '0')}`;
+
+    await fillMissingAttendance(userId, startDate, endDate);
 
     const records = await Attendance.find({
       user: userId,
       date: { $gte: startDate, $lte: endDate }
     }).sort({ date: 1 });
 
-    const allDates = [];
-    for (let day = 1; day <= daysInMonth; day++) {
-      const dateStr = `${year}-${month.padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-      const existing = records.find(r => r.date === dateStr);
-      
-      if (existing) {
-        allDates.push(existing);
-      } else {
-        const absentRecord = await Attendance.create({
-          user: userId,
-          date: dateStr,
-          status: "ABSENT",
-          scanStatus: "NONE"
-        });
-        allDates.push(absentRecord);
-      }
-    }
+    let presentDays = 0;
+    let halfDays = 0;
+    let absentDays = 0;
+    let totalWorkMinutes = 0;
 
-    const summary = {
-      PRESENT: allDates.filter(r => r.status === "PRESENT").length,
-      HALF_DAY: allDates.filter(r => r.status === "HALF_DAY").length,
-      ABSENT: allDates.filter(r => r.status === "ABSENT").length,
-      totalDays: allDates.length
-    };
+    records.forEach(record => {
+      if (record.status === "PRESENT") presentDays++;
+      else if (record.status === "HALF_DAY") halfDays++;
+      else if (record.status === "ABSENT") absentDays++;
+      
+      totalWorkMinutes += record.workMinutes || 0;
+    });
 
     res.json({
       success: true,
@@ -215,8 +196,15 @@ export const getMonthlyAttendance = async (req, res) => {
         uid: user.uid
       },
       period: `${month}/${year}`,
-      summary,
-      records: allDates
+      summary: {
+        presentDays,
+        halfDays,
+        absentDays,
+        totalDays: records.length,
+        totalWorkMinutes,
+        totalWorkHours: Math.round((totalWorkMinutes / 60) * 100) / 100
+      },
+      records
     });
 
   } catch (error) {
@@ -248,8 +236,6 @@ export const getSalaryCalculation = async (req, res) => {
       });
     }
 
-    await resolveLazyAttendance(userId);
-
     const startDate = `${year}-${month.padStart(2, '0')}-01`;
     const daysInMonth = new Date(year, month, 0).getDate();
     const endDate = `${year}-${month.padStart(2, '0')}-${daysInMonth.toString().padStart(2, '0')}`;
@@ -263,9 +249,11 @@ export const getSalaryCalculation = async (req, res) => {
     const breakdown = {};
 
     for (const record of records) {
-      const multiplier = getSalaryMultiplier(record.status);
-      payableDays += multiplier;
+      let multiplier = 0;
+      if (record.status === "PRESENT") multiplier = 1;
+      else if (record.status === "HALF_DAY") multiplier = 0.5;
       
+      payableDays += multiplier;
       breakdown[record.status] = (breakdown[record.status] || 0) + multiplier;
     }
 
@@ -304,11 +292,11 @@ export const markAbsentUsers = async (req, res) => {
     const { userId } = req.body;
     
     if (userId) {
-      await resolveLazyAttendance(userId);
+      await lazyMarkAbsent();
     } else {
       const users = await User.find({ role: "Employee" });
       for (const user of users) {
-        await resolveLazyAttendance(user._id);
+        await lazyMarkAbsent();
       }
     }
     
