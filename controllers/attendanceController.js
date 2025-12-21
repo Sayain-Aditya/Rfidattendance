@@ -114,7 +114,7 @@ export const getAttendance = async (req, res) => {
   try {
     const { page = 1, limit = 50, userId } = req.query;
     
-    await lazyMarkAbsent();
+    // await lazyMarkAbsent();
     
     const query = userId ? { user: userId } : {};
     
