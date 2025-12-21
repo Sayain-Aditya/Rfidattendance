@@ -119,7 +119,6 @@ export const getAttendance = async (req, res) => {
     const query = userId ? { user: userId } : {};
     
     const attendance = await Attendance.find(query)
-      .populate("user", "name uid role")
       .sort({ date: -1, createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
