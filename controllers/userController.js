@@ -1,19 +1,53 @@
 import User from "../models/User.js";
+import UidMaster from "../models/UidMaster.js";
 
 export const registerUser = async (req, res) => {
   try {
     const { name, uid } = req.body;
 
-    const exists = await User.findOne({ uid });
-    if (exists) {
-      return res.status(400).json({ message: "UID already registered" });
+    if (!name || !uid) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Name and UID are required" 
+      });
     }
 
+    // Check if UID exists in master and is available
+    const uidMaster = await UidMaster.findOne({ uid, isUsed: false });
+    if (!uidMaster) {
+      return res.status(400).json({ 
+        success: false,
+        message: "UID not found in master or already used" 
+      });
+    }
+
+    // Check if user already exists
+    const exists = await User.findOne({ uid });
+    if (exists) {
+      return res.status(400).json({ 
+        success: false,
+        message: "UID already registered" 
+      });
+    }
+
+    // Create user
     const user = await User.create({ name, uid });
 
-    res.json({ message: "User Registered", user });
+    // Mark UID as used
+    uidMaster.isUsed = true;
+    uidMaster.assignedTo = user._id;
+    await uidMaster.save();
+
+    res.json({ 
+      success: true,
+      message: "User Registered", 
+      user 
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ 
+      success: false,
+      message: err.message 
+    });
   }
 };
 

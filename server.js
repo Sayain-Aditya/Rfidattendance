@@ -6,6 +6,7 @@ import connectDB from "./config/db.js";
 import userRoutes from "./routes/userRoutes.js";
 import attendanceRoutes from "./routes/attendanceRoutes.js";
 import shiftRoutes from "./routes/shiftRoutes.js";
+import uidMasterRoutes from "./routes/uidMasterRoutes.js";
 
 dotenv.config();
 connectDB();
@@ -17,6 +18,7 @@ app.use(express.json());
 app.use("/api/user", userRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/shift", shiftRoutes);
+app.use("/api/uid-master", uidMasterRoutes);
 
 app.get("/", (req, res) => {
   res.send("RFID Attendance Backend Running...");
