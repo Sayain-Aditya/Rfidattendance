@@ -12,7 +12,7 @@ export const registerUser = async (req, res) => {
       });
     }
 
-    // Check if UID exists in master and is available
+
     const uidMaster = await UidMaster.findOne({ uid, isUsed: false });
     if (!uidMaster) {
       return res.status(400).json({ 
@@ -21,7 +21,7 @@ export const registerUser = async (req, res) => {
       });
     }
 
-    // Check if user already exists
+
     const exists = await User.findOne({ uid });
     if (exists) {
       return res.status(400).json({ 
@@ -30,10 +30,10 @@ export const registerUser = async (req, res) => {
       });
     }
 
-    // Create user
+
     const user = await User.create({ name, uid });
 
-    // Mark UID as used
+
     uidMaster.isUsed = true;
     uidMaster.assignedTo = user._id;
     await uidMaster.save();
@@ -110,6 +110,68 @@ export const getUsers = async (req, res) => {
     res.status(500).json({ 
       success: false,
       message: err.message 
+    });
+  }
+};
+
+export const updateUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { name, currentShift } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    if (name) user.name = name;
+    if (currentShift !== undefined) user.currentShift = currentShift;
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: "User updated successfully",
+      user
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+};
+
+export const deleteUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    await UidMaster.updateOne(
+      { assignedTo: userId },
+      { $set: { isUsed: false, assignedTo: null } }
+    );
+
+    await User.findByIdAndDelete(userId);
+
+    res.json({
+      success: true,
+      message: "User deleted successfully"
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message
     });
   }
 };
