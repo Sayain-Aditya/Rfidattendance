@@ -20,6 +20,20 @@ export const getISTTime = () => {
   });
 };
 
+export const parseDeviceTime = (deviceTime) => {
+  try {
+    const deviceDate = new Date(deviceTime);
+    return deviceDate.toLocaleString("en-US", {
+      timeZone: "Asia/Kolkata",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true
+    });
+  } catch (error) {
+    return getISTTime();
+  }
+};
+
 export const getAttendanceDate = () => {
   const now = new Date();
   const istTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));

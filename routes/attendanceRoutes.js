@@ -1,18 +1,18 @@
 import express from "express";
 import { 
   scanCard, 
-  getAttendance, 
+  getAttendance,
+  getTodayAttendance,
   getMonthlyAttendance,
-  getSalaryCalculation,
-  markAbsentUsers 
+  getUserAttendance
 } from "../controllers/attendanceController.js";
 
 const router = express.Router();
 
 router.post("/scan", scanCard);
-router.get("/view", getAttendance);
-router.get("/monthly/:userId", getMonthlyAttendance);
-router.get("/salary/:userId", getSalaryCalculation);
-router.post("/mark-absent", markAbsentUsers);
+router.get("/", getAttendance);
+router.get("/today", getTodayAttendance);
+router.get("/monthly", getMonthlyAttendance);
+router.get("/user/:userId", getUserAttendance);
 
 export default router;
