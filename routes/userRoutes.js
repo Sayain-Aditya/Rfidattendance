@@ -6,8 +6,8 @@ const router = express.Router();
 router.post("/register", registerUser);
 router.post("/register-admin", registerAdmin);
 router.post("/login", login);
-router.get("/all", getUsers);
-router.put("/:userId", updateUser);
-router.delete("/:userId", deleteUser);
+router.get("/view/all", getUsers);
+router.put("/update/:userId", updateUser);
+router.delete("/delete/:userId", deleteUser);
 
 export default router;

@@ -10,9 +10,9 @@ import {
 const router = express.Router();
 
 router.post("/add", addUID);
-router.get("/available", getAvailableUIDs);
-router.get("/list", getAllUIDs);
-router.put("/:updateId", updateUID);
-router.delete("/:uidId", deleteUID);
+router.get("/view/available", getAvailableUIDs);
+router.get("/view/all", getAllUIDs);
+router.put("/update/:updateId", updateUID);
+router.delete("/delete/:uidId", deleteUID);
 
 export default router;

@@ -10,9 +10,9 @@ import {
 const router = express.Router();
 
 router.post("/scan", scanCard);
-router.get("/view", getAttendance);
-router.get("/today", getTodayAttendance);
-router.get("/monthly", getMonthlyAttendance);
+router.get("/view/all", getAttendance);
+router.get("/view/today", getTodayAttendance);
+router.get("/view/monthly", getMonthlyAttendance);
 router.get("/user/:userId", getUserAttendance);
 
 export default router;
