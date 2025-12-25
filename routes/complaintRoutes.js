@@ -4,7 +4,7 @@ import { submitComplaint, getComplaints, updateComplaintStatus } from "../contro
 const router = express.Router();
 
 router.post("/submit", submitComplaint);
-router.get("/", getComplaints);
+router.get("/get", getComplaints);
 router.put("/:complaintId", updateComplaintStatus);
 
 export default router;

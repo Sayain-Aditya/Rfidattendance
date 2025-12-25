@@ -13,7 +13,7 @@ const router = express.Router();
 router.post("/create", createShift);
 router.post("/assign", assignShift);
 router.get("/user/:userId", getUserShifts);
-router.get("/", getAllShifts);
+router.get("/get", getAllShifts);
 router.put("/:shiftId", updateShift);
 router.delete("/:shiftId", deleteShift);
 

@@ -4,7 +4,7 @@ import { submitLeave, getLeaves, updateLeaveStatus } from "../controllers/leaveC
 const router = express.Router();
 
 router.post("/submit", submitLeave);
-router.get("/", getLeaves);
+router.get("/get", getLeaves);
 router.put("/:leaveId", updateLeaveStatus);
 
 export default router;

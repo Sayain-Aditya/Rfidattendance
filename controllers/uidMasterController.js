@@ -84,6 +84,29 @@ export const getAllUIDs = async (req, res) => {
   }
 };
 
+export const updateUID = async (req, res) => {
+  try{
+    const {uidId} = req.params;
+    const {uid} = req.body;
+
+    const uidMaster = await uidMaster.findbyIdUpdate(
+      uidId,
+      {uid},
+      {new:true}
+    );
+  req.json({
+    success:true,
+    message:"UID updated successfully",
+    uidMaster
+  });
+} catch(error){
+  res.status(500).json({
+    success:false,
+    message:"Failed to update UID"
+  });
+}
+};
+
 export const deleteUID = async (req, res) => {
   try {
     const { uidId } = req.params;
