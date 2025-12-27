@@ -1,9 +1,11 @@
 import User from "../models/User.js";
 import UidMaster from "../models/UidMaster.js";
+import { getNextEmployeeId, peekNextEmployeeId } from "../services/employeeService.js";
 
 export const registerUser = async (req, res) => {
   try {
     const { name, email, password, address, uid, role = 'Employee' } = req.body;
+    const profileImage = req.file ? req.file.filename : null;
 
     if (!name || !email || !password || !address || !uid) {
       return res.status(400).json({ 
@@ -36,7 +38,8 @@ export const registerUser = async (req, res) => {
       });
     }
 
-    const user = await User.create({ name, email, password, address, uid, role });
+    const employeeId = await getNextEmployeeId();
+    const user = await User.create({ name, email, password, address, uid, role, profileImage, employeeId });
 
     uidMaster.isUsed = true;
     uidMaster.assignedTo = user._id;
@@ -47,11 +50,13 @@ export const registerUser = async (req, res) => {
       message: "User Registered", 
       user: {
         _id: user._id,
+        employeeId: user.employeeId,
         name: user.name,
         email: user.email,
         address: user.address,
         uid: user.uid,
-        role: user.role
+        role: user.role,
+        profileImage: user.profileImage
       }
     });
   } catch (err) {
@@ -81,13 +86,32 @@ export const registerAdmin = async (req, res) => {
 
 export const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, employeeId } = req.body;
 
-    const user = await User.findOne({ email, password });
-    if (!user) {
-      return res.status(401).json({ 
+    let user;
+    
+    if (employeeId) {
+      // login with employee id employees only
+      user = await User.findOne({ employeeId, password, role: "Employee" });
+      if (!user) {
+        return res.status(401).json({ 
+          success: false,
+          message: "Invalid employee credentials" 
+        });
+      }
+    } else if (email) {
+      // Login with email admins only
+      user = await User.findOne({ email, password, role: "Admin" });
+      if (!user) {
+        return res.status(401).json({ 
+          success: false,
+          message: "Invalid admin credentials" 
+        });
+      }
+    } else {
+      return res.status(400).json({ 
         success: false,
-        message: "Invalid credentials" 
+        message: "Email or Employee ID is required" 
       });
     }
 
@@ -96,6 +120,7 @@ export const login = async (req, res) => {
       message: "Login successful", 
       user: {
         _id: user._id,
+        employeeId: user.employeeId,
         name: user.name,
         email: user.email,
         uid: user.uid,
@@ -207,6 +232,7 @@ export const updateUser = async (req, res) => {
   try {
     const { userId } = req.params;
     const { name, email, address, currentShift } = req.body;
+    const profileImage = req.file ? req.file.filename : null;
 
     const user = await User.findById(userId);
     if (!user) {
@@ -220,6 +246,7 @@ export const updateUser = async (req, res) => {
     if (email) user.email = email;
     if (address) user.address = address;
     if (currentShift !== undefined) user.currentShift = currentShift;
+    if (profileImage) user.profileImage = profileImage;
 
     await user.save();
 
@@ -228,11 +255,13 @@ export const updateUser = async (req, res) => {
       message: "User updated successfully",
       user: {
         _id: user._id,
+        employeeId: user.employeeId,
         name: user.name,
         email: user.email,
         address: user.address,
         uid: user.uid,
-        role: user.role
+        role: user.role,
+        profileImage: user.profileImage
       }
     });
   } catch (err) {
@@ -273,3 +302,97 @@ export const deleteUser = async (req, res) => {
     });
   }
 };
+
+export const toggleUserStatus = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { newUid } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    const newStatus = !user.isActive;
+
+    if (newStatus === false) {
+      // deactivating User
+      await UidMaster.updateOne(
+        { uid: user.uid },
+        { $set: { isUsed: false }, $unset: { assignedTo: 1 } }
+      );
+    } else {
+      // activating user
+      if (!newUid) {
+        return res.status(400).json({
+          success: false,
+          message: "New UID is required to activate user"
+        });
+      }
+
+      // check if new uids exists and is available
+      const uidMaster = await UidMaster.findOne({ uid: newUid, isUsed: false });
+      if (!uidMaster) {
+        return res.status(400).json({
+          success: false,
+          message: "UID not found in master or already used"
+        });
+      }
+
+      // check if uid is Already assigned to another User
+      const uidExists = await User.findOne({ uid: newUid });
+      if (uidExists) {
+        return res.status(400).json({
+          success: false,
+          message: "UID already assigned to another user"
+        });
+      }
+
+      // update user with new uid and register it
+      user.uid = newUid;
+      await UidMaster.updateOne(
+        { uid: newUid },
+        { $set: { isUsed: true, assignedTo: user._id } }
+      );
+    }
+
+    user.isActive = newStatus;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: `User ${newStatus ? 'activated' : 'deactivated'} successfully`,
+      user: {
+        _id: user._id,
+        employeeId: user.employeeId,
+        name: user.name,
+        uid: user.uid,
+        isActive: user.isActive
+      }
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+};
+
+export const getNextEmployeeIdAPI = async (req, res) => {
+  try {
+    const nextEmployeeId = await peekNextEmployeeId();
+    
+    res.json({
+      success: true,
+      nextEmployeeId
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+};     
