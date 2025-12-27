@@ -9,6 +9,8 @@ import shiftRoutes from "./routes/shiftRoutes.js";
 import uidMasterRoutes from "./routes/uidMasterRoutes.js";
 import leaveRoutes from "./routes/leaveRoutes.js";
 import complaintRoutes from "./routes/complaintRoutes.js";
+import dashboardRoutes from "./routes/dashboardRoutes.js";
+import noticeRoutes from "./routes/noticeRoutes.js";
 
 dotenv.config();
 connectDB();
@@ -23,6 +25,8 @@ app.use("/api/shift", shiftRoutes);
 app.use("/api/uid-master", uidMasterRoutes);
 app.use("/api/leave", leaveRoutes);
 app.use("/api/complaint", complaintRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/notice", noticeRoutes);
 
 app.get("/", (req, res) => {
   res.send("RFID Attendance Backend Running...");

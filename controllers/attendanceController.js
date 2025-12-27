@@ -1,5 +1,6 @@
 import User from "../models/User.js";
 import Attendance from "../models/Attendance.js";
+import Leave from "../models/Leave.js";
 import { getISTDate, getISTTime, parseDeviceTime } from "../utils/istTime.js";
 import { normalizeUID, createUIDRegex } from "../utils/lazyAttendance.js";
 
@@ -248,5 +249,84 @@ export const getAttendance = async (req, res) => {
       success: false,
       message: "Failed to fetch attendance records"
     });
+  }
+};
+
+// Get attendance with filters
+export const getAttendanceWithFilters = async (req, res) => {
+  try {
+    const { date, employeeId, startDate, endDate } = req.query;
+    let filter = {};
+
+    if (date) {
+      filter.date = date;
+    }
+
+    if (startDate && endDate) {
+      filter.date = { 
+        $gte: startDate, 
+        $lte: endDate 
+      };
+    }
+
+    if (employeeId) {
+      filter.user = employeeId;
+    }
+
+    const attendance = await Attendance.find(filter)
+      .populate('user', 'name email')
+      .sort({ date: -1 });
+
+    res.json({ success: true, data: attendance });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Get monthly summary
+export const getMonthlyAttendanceSummary = async (req, res) => {
+  try {
+    const { month, year, employeeId } = req.query;
+    const startDate = `${year}-${month.padStart(2, '0')}-01`;
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${month.padStart(2, '0')}-${daysInMonth.toString().padStart(2, '0')}`;
+    
+    let filter = {
+      date: { $gte: startDate, $lte: endDate }
+    };
+    
+    if (employeeId) {
+      filter.user = employeeId;
+    }
+
+    const attendance = await Attendance.find(filter)
+      .populate('user', 'name email');
+
+    const summary = {};
+    const totalDays = daysInMonth;
+
+    // Group by employee
+    attendance.forEach(record => {
+      const userId = record.user._id.toString();
+      if (!summary[userId]) {
+        summary[userId] = {
+          employee: record.user,
+          totalWorkingDays: totalDays,
+          presentDays: 0,
+          absentDays: 0,
+          leaveDays: 0
+        };
+      }
+      
+      if (record.status === 'PRESENT' || record.status === 'OUT') {
+        summary[userId].presentDays++;
+      } else if (record.status === 'ABSENT') {
+        summary[userId].absentDays++;
+      }
+    });
+
+    res.json({ success: true, data: Object.values(summary) });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 };
