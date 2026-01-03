@@ -57,7 +57,7 @@ export const getAvailableUIDs = async (req, res) => {
 export const getAllUIDs = async (req, res) => {
   try {
     const uids = await UidMaster.find()
-      .populate("assignedTo", "name uid")
+      .populate("assignedTo", "name employeeId")
       .sort({ createdAt: -1 });
 
     const formattedUIDs = uids.map(uid => ({
@@ -65,7 +65,7 @@ export const getAllUIDs = async (req, res) => {
       uid: uid.uid,
       isUsed: uid.isUsed,
       employeeName: uid.assignedTo ? uid.assignedTo.name : null,
-      employeeUID: uid.assignedTo ? uid.assignedTo.uid : null,
+      employeeId: uid.assignedTo ? uid.assignedTo.employeeId : null,
       addedBy: uid.addedBy,
       createdAt: uid.createdAt,
       updatedAt: uid.updatedAt
