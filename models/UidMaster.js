@@ -8,7 +8,7 @@ const uidMasterSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ["Active", "Inactive"],
+    enum: ["Active", "Inactive", "DELETED"],
     default: "Inactive"
   },
   assignedTo: {
