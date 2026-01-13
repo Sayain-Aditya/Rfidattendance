@@ -38,8 +38,12 @@ export const addUID = async (req, res) => {
 
 export const getAvailableUIDs = async (req, res) => {
   try {
-    const uids = await UidMaster.find({ status: "AVAILABLE" })
-      .sort({ createdAt: -1 });
+    // Get UIDs that are Inactive and not assigned to anyone
+    const uids = await UidMaster.find({
+      status: "Inactive",
+      assignedTo: null
+    })
+    .sort({ createdAt: -1 });
 
     res.json({
       success: true,

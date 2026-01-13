@@ -4,7 +4,7 @@ import {
   getAvailableUIDs, 
   getAllUIDs, 
   updateUID,
-  deleteUID 
+  deleteUID
 } from "../controllers/uidMasterController.js";
 
 const router = express.Router();

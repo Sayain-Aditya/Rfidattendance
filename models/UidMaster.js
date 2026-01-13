@@ -22,6 +22,4 @@ const uidMasterSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-uidMasterSchema.index({ isUsed: 1 });
-
 export default mongoose.model("UidMaster", uidMasterSchema);
