@@ -14,7 +14,7 @@ export const registerUser = async (req, res) => {
       });
     }
 
-    const uidMaster = await UidMaster.findOne({ uid, isUsed: false });
+    const uidMaster = await UidMaster.findOne({ uid, status: "Inactive" });
     if (!uidMaster) {
       return res.status(400).json({ 
         success: false,
@@ -41,7 +41,7 @@ export const registerUser = async (req, res) => {
     const employeeId = await getNextEmployeeId();
     const user = await User.create({ name, email, password, address, phoneNumber, uid, role, profileImage, employeeId });
 
-    uidMaster.isUsed = true;
+    uidMaster.status = "Active";
     uidMaster.assignedTo = user._id;
     await uidMaster.save();
 
@@ -286,7 +286,7 @@ export const deleteUser = async (req, res) => {
 
     await UidMaster.updateOne(
       { uid: user.uid },
-      { $set: { isUsed: false }, $unset: { assignedTo: 1 } }
+      { $set: { status: "Inactive" }, $unset: { assignedTo: 1 } }
     );
 
     await User.findByIdAndDelete(userId);
@@ -322,7 +322,7 @@ export const toggleUserStatus = async (req, res) => {
       // deactivating User
       await UidMaster.updateOne(
         { uid: user.uid },
-        { $set: { isUsed: false }, $unset: { assignedTo: 1 } }
+        { $set: { status: "Inactive" }, $unset: { assignedTo: 1 } }
       );
     } else {
       // activating user
@@ -334,7 +334,7 @@ export const toggleUserStatus = async (req, res) => {
       }
 
       // check if new uids exists and is available
-      const uidMaster = await UidMaster.findOne({ uid: newUid, isUsed: false });
+      const uidMaster = await UidMaster.findOne({ uid: newUid, status: "Inactive" });
       if (!uidMaster) {
         return res.status(400).json({
           success: false,
@@ -355,7 +355,7 @@ export const toggleUserStatus = async (req, res) => {
       user.uid = newUid;
       await UidMaster.updateOne(
         { uid: newUid },
-        { $set: { isUsed: true, assignedTo: user._id } }
+        { $set: { status: "Active", assignedTo: user._id } }
       );
     }
 
