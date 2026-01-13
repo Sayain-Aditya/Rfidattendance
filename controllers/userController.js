@@ -4,10 +4,10 @@ import { getNextEmployeeId, peekNextEmployeeId } from "../services/employeeServi
 
 export const registerUser = async (req, res) => {
   try {
-    const { name, email, password, address, uid, role = 'Employee' } = req.body;
+    const { name, email, password, address, phoneNumber, uid, role = 'Employee' } = req.body;
     const profileImage = req.file ? req.file.filename : null;
 
-    if (!name || !email || !password || !address || !uid) {
+    if (!name || !email || !password || !address || !phoneNumber || !uid) {
       return res.status(400).json({ 
         success: false,
         message: "All fields are required" 
@@ -39,7 +39,7 @@ export const registerUser = async (req, res) => {
     }
 
     const employeeId = await getNextEmployeeId();
-    const user = await User.create({ name, email, password, address, uid, role, profileImage, employeeId });
+    const user = await User.create({ name, email, password, address, phoneNumber, uid, role, profileImage, employeeId });
 
     uidMaster.isUsed = true;
     uidMaster.assignedTo = user._id;

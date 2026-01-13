@@ -6,9 +6,10 @@ const uidMasterSchema = new mongoose.Schema({
     required: true,
     unique: true
   },
-  isUsed: {
-    type: Boolean,
-    default: false
+  status: {
+    type: String,
+    enum: ["Active", "Inactive"],
+    default: "Inactive"
   },
   assignedTo: {
     type: mongoose.Schema.Types.ObjectId,

@@ -38,7 +38,7 @@ export const addUID = async (req, res) => {
 
 export const getAvailableUIDs = async (req, res) => {
   try {
-    const uids = await UidMaster.find({ isUsed: false })
+    const uids = await UidMaster.find({ status: "AVAILABLE" })
       .sort({ createdAt: -1 });
 
     res.json({
@@ -63,7 +63,7 @@ export const getAllUIDs = async (req, res) => {
     const formattedUIDs = uids.map(uid => ({
       _id: uid._id,
       uid: uid.uid,
-      isUsed: uid.isUsed,
+      status: uid.status,
       employeeName: uid.assignedTo ? uid.assignedTo.name : null,
       employeeId: uid.assignedTo ? uid.assignedTo.employeeId : null,
       addedBy: uid.addedBy,
@@ -119,7 +119,7 @@ export const deleteUID = async (req, res) => {
       });
     }
 
-    if (uidMaster.isUsed) {
+    if (uidMaster.status === "ASSIGNED") {
       return res.status(400).json({
         success: false,
         message: "Cannot delete UID that is already assigned to an employee"
