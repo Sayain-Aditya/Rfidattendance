@@ -90,11 +90,11 @@ export const getAllUIDs = async (req, res) => {
 
 export const updateUID = async (req, res) => {
   try {
-    const { updatedId } = req.params;
+    const { updateId } = req.params;
     const { uid } = req.body;
 
     const uidMaster = await UidMaster.findByIdAndUpdate(
-      updatedId,
+      updateId,
       { uid },
       { new: true, runValidators: true }
     );
