@@ -89,26 +89,34 @@ export const getAllUIDs = async (req, res) => {
 };
 
 export const updateUID = async (req, res) => {
-  try{
-    const {uidId} = req.params;
-    const {uid} = req.body;
+  try {
+    const { uidId } = req.params;
+    const { uid } = req.body;
 
-    const uidMaster = await uidMaster.findbyIdUpdate(
+    const uidMaster = await UidMaster.findByIdAndUpdate(
       uidId,
-      {uid},
-      {new:true}
+      { uid },
+      { new: true, runValidators: true }
     );
-  req.json({
-    success:true,
-    message:"UID updated successfully",
-    uidMaster
-  });
-} catch(error){
-  res.status(500).json({
-    success:false,
-    message:"Failed to update UID"
-  });
-}
+    
+    if (!uidMaster) {
+      return res.status(404).json({
+        success: false,
+        message: "UID not found"
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: "UID updated successfully",
+      uidMaster
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to update UID"
+    });
+  }
 };
 
 export const deleteUID = async (req, res) => {
@@ -123,7 +131,7 @@ export const deleteUID = async (req, res) => {
       });
     }
 
-    if (uidMaster.status === "ASSIGNED") {
+    if (uidMaster.status === "Active") {
       return res.status(400).json({
         success: false,
         message: "Cannot delete UID that is already assigned to an employee"
