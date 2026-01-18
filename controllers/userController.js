@@ -52,6 +52,7 @@ export const registerUser = async (req, res) => {
         _id: user._id,
         employeeId: user.employeeId,
         name: user.name,
+        phoneNumber: user.phoneNumber,
         email: user.email,
         address: user.address,
         uid: user.uid,
@@ -231,7 +232,7 @@ export const getUsers = async (req, res) => {
 export const updateUser = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { name, email, address, currentShift } = req.body;
+    const { name, email, address, phoneNumber, currentShift } = req.body;
     const profileImage = req.file ? req.file.filename : null;
 
     const user = await User.findById(userId);
@@ -244,6 +245,7 @@ export const updateUser = async (req, res) => {
 
     if (name) user.name = name;
     if (email) user.email = email;
+    if (phoneNumber) user.phoneNumber = phoneNumber;
     if (address) user.address = address;
     if (currentShift !== undefined) user.currentShift = currentShift;
     if (profileImage) user.profileImage = profileImage;
@@ -258,6 +260,7 @@ export const updateUser = async (req, res) => {
         employeeId: user.employeeId,
         name: user.name,
         email: user.email,
+        phoneNumber: user.phoneNumber,
         address: user.address,
         uid: user.uid,
         role: user.role,
