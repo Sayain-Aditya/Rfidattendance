@@ -2,6 +2,7 @@ import User from "../models/User.js";
 import Attendance from "../models/Attendance.js";
 import Leave from "../models/Leave.js";
 import Complaint from "../models/Complaint.js";
+import Notice from "../models/Notice.js";
 import { getISTDate } from "../utils/istTime.js";
 
 export const getAdminDashboard = async (req, res) => {
@@ -46,6 +47,11 @@ export const getAdminDashboard = async (req, res) => {
       .populate("user", "name uid email")
       .sort({ createdAt: -1 })
       .limit(3);
+    
+    // Get all active notices
+    const notices = await Notice.find({ isActive: true })
+      .populate("createdBy", "name")
+      .sort({ priority: -1, createdAt: -1 });
 
     res.json({
       success: true,
@@ -78,6 +84,7 @@ export const getAdminDashboard = async (req, res) => {
         pendingLeaves,
         complaintStats,
         recentComplaints,
+        notices,
         notifications: {
           newLeaves: pendingLeaves.length,
           newComplaints: recentComplaints.length

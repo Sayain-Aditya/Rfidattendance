@@ -70,18 +70,40 @@ export const registerUser = async (req, res) => {
 
 export const registerAdmin = async (req, res) => {
   try {
-    const { name, uid } = req.body;
+    const { name, email, password } = req.body;
 
-    const exists = await User.findOne({ uid });
-    if (exists) {
-      return res.status(400).json({ message: "UID already registered" });
+    if (!name || !email || !password) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Name, email and password are required" 
+      });
     }
 
-    const user = await User.create({ name, uid, role: "Admin" });
+    const emailExists = await User.findOne({ email });
+    if (emailExists) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Email already registered" 
+      });
+    }
 
-    res.json({ message: "Admin Registered", user });
+    const user = await User.create({ name, email, password, role: "Admin" });
+
+    res.json({ 
+      success: true,
+      message: "Admin Registered", 
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ 
+      success: false,
+      message: err.message 
+    });
   }
 };
 
