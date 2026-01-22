@@ -1,7 +1,7 @@
 import User from "../models/User.js";
 import Attendance from "../models/Attendance.js";
 import Leave from "../models/Leave.js";
-import { getISTDate, getISTTime, parseDeviceTime } from "../utils/istTime.js";
+import { getISTDate, getISTTime, parseDeviceTime, formatTimeForDisplay } from "../utils/istTime.js";
 import { normalizeUID, createUIDRegex } from "../utils/lazyAttendance.js";
 
 export const scanCard = async (req, res) => {
@@ -104,11 +104,18 @@ export const getTodayAttendance = async (req, res) => {
       .populate("user", "name uid role")
       .sort({ createdAt: -1 });
 
+    // Format times for display
+    const formattedAttendance = attendance.map(record => ({
+      ...record.toObject(),
+      checkIn: formatTimeForDisplay(record.checkIn),
+      checkOut: formatTimeForDisplay(record.checkOut)
+    }));
+
     res.json({
       success: true,
       date: today,
-      count: attendance.length,
-      data: attendance
+      count: formattedAttendance.length,
+      data: formattedAttendance
     });
   } catch (error) {
     console.error("❌ Today Attendance Error:", error);
@@ -277,7 +284,14 @@ export const getAttendanceWithFilters = async (req, res) => {
       .populate('user', 'name email')
       .sort({ date: -1 });
 
-    res.json({ success: true, data: attendance });
+    // Format times for display
+    const formattedAttendance = attendance.map(record => ({
+      ...record.toObject(),
+      checkIn: formatTimeForDisplay(record.checkIn),
+      checkOut: formatTimeForDisplay(record.checkOut)
+    }));
+
+    res.json({ success: true, data: formattedAttendance });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

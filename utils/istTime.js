@@ -12,8 +12,12 @@ export const getISTDate = () => {
 };
 
 export const getISTTime = () => {
-  return new Date().toLocaleString("en-US", {
-    timeZone: "Asia/Kolkata",
+  const now = new Date();
+  const istTime = new Date(now.toLocaleString("en-US", {
+    timeZone: "Asia/Kolkata"
+  }));
+  
+  return istTime.toLocaleString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: true
@@ -23,8 +27,11 @@ export const getISTTime = () => {
 export const parseDeviceTime = (deviceTime) => {
   try {
     const deviceDate = new Date(deviceTime);
-    return deviceDate.toLocaleString("en-US", {
-      timeZone: "Asia/Kolkata",
+    const istTime = new Date(deviceDate.toLocaleString("en-US", {
+      timeZone: "Asia/Kolkata"
+    }));
+    
+    return istTime.toLocaleString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
       hour12: true
@@ -96,4 +103,27 @@ export const isLateEntry = (checkInTime, userShift = null) => {
   const graceMinutes = userShift.graceMinutes || 15;
   
   return checkInMinutes > (shiftStartMinutes + graceMinutes);
+};
+
+// Format time for consistent display
+export const formatTimeForDisplay = (timeString) => {
+  if (!timeString) return null;
+  
+  // If it's already in the correct format, return as is
+  if (typeof timeString === 'string' && timeString.includes('M')) {
+    return timeString;
+  }
+  
+  // If it's a Date object or timestamp, convert to IST
+  try {
+    const date = new Date(timeString);
+    return date.toLocaleString("en-US", {
+      timeZone: "Asia/Kolkata",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true
+    });
+  } catch (error) {
+    return timeString;
+  }
 };
