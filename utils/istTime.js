@@ -25,15 +25,20 @@ export const getISTTime = () => {
 
 export const parseDeviceTime = (deviceTime) => {
   try {
-    const deviceDate = new Date(deviceTime);
-    // Add 5.5 hours to UTC to get IST
-    const istTime = new Date(deviceDate.getTime() + (5.5 * 60 * 60 * 1000));
+    // Device time is already in IST format (YYYY-MM-DD HH:MM:SS)
+    // Just extract the time part and format it
+    if (typeof deviceTime === 'string' && deviceTime.includes(' ')) {
+      const timePart = deviceTime.split(' ')[1]; // Get HH:MM:SS
+      const [hours, minutes] = timePart.split(':');
+      const hour24 = parseInt(hours);
+      const hour12 = hour24 === 0 ? 12 : hour24 > 12 ? hour24 - 12 : hour24;
+      const ampm = hour24 >= 12 ? 'PM' : 'AM';
+      
+      return `${hour12.toString().padStart(2, '0')}:${minutes} ${ampm}`;
+    }
     
-    return istTime.toLocaleString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true
-    });
+    // Fallback to current IST time
+    return getISTTime();
   } catch (error) {
     return getISTTime();
   }
