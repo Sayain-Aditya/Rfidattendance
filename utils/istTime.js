@@ -13,9 +13,8 @@ export const getISTDate = () => {
 
 export const getISTTime = () => {
   const now = new Date();
-  const istTime = new Date(now.toLocaleString("en-US", {
-    timeZone: "Asia/Kolkata"
-  }));
+  // Add 5.5 hours to UTC to get IST
+  const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
   
   return istTime.toLocaleString("en-US", {
     hour: "2-digit",
@@ -27,9 +26,8 @@ export const getISTTime = () => {
 export const parseDeviceTime = (deviceTime) => {
   try {
     const deviceDate = new Date(deviceTime);
-    const istTime = new Date(deviceDate.toLocaleString("en-US", {
-      timeZone: "Asia/Kolkata"
-    }));
+    // Add 5.5 hours to UTC to get IST
+    const istTime = new Date(deviceDate.getTime() + (5.5 * 60 * 60 * 1000));
     
     return istTime.toLocaleString("en-US", {
       hour: "2-digit",
@@ -117,8 +115,10 @@ export const formatTimeForDisplay = (timeString) => {
   // If it's a Date object or timestamp, convert to IST
   try {
     const date = new Date(timeString);
-    return date.toLocaleString("en-US", {
-      timeZone: "Asia/Kolkata",
+    // Add 5.5 hours to UTC to get IST
+    const istTime = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+    
+    return istTime.toLocaleString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
       hour12: true
