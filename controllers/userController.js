@@ -87,7 +87,16 @@ export const registerAdmin = async (req, res) => {
       });
     }
 
-    const user = await User.create({ name, email, password, role: "Admin" });
+    const user = await User.create({ 
+      name, 
+      email, 
+      password, 
+      role: "Admin",
+      uid: "ADMIN_" + Date.now(),
+      address: "N/A",
+      phoneNumber: 0,
+      employeeId: "ADMIN_" + Date.now()
+    });
 
     res.json({ 
       success: true,
@@ -254,7 +263,7 @@ export const getUsers = async (req, res) => {
 export const updateUser = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { name, email, address, phoneNumber, currentShift } = req.body;
+    const { name, email, address, phoneNumber, currentShift, role } = req.body;
     const profileImage = req.file ? req.file.filename : null;
 
     const user = await User.findById(userId);
@@ -270,6 +279,7 @@ export const updateUser = async (req, res) => {
     if (phoneNumber) user.phoneNumber = phoneNumber;
     if (address) user.address = address;
     if (currentShift !== undefined) user.currentShift = currentShift;
+    if (role) user.role = role;
     if (profileImage) user.profileImage = profileImage;
 
     await user.save();
