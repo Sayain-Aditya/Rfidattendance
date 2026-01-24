@@ -70,7 +70,7 @@ export const registerUser = async (req, res) => {
 
 export const registerAdmin = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, phoneNumber } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({ 
@@ -94,7 +94,7 @@ export const registerAdmin = async (req, res) => {
       role: "Admin",
       uid: "ADMIN_" + Date.now(),
       address: "N/A",
-      phoneNumber: 0,
+      phoneNumber: phoneNumber || 0,
       employeeId: "ADMIN_" + Date.now()
     });
 
@@ -105,6 +105,7 @@ export const registerAdmin = async (req, res) => {
         _id: user._id,
         name: user.name,
         email: user.email,
+        phoneNumber: user.phoneNumber,
         role: user.role
       }
     });
