@@ -38,6 +38,7 @@ const attendanceSchema = new mongoose.Schema({
 
 attendanceSchema.index({ user: 1, date: 1 }, { unique: true });
 attendanceSchema.index({ date: 1 });
+attendanceSchema.index({ date: 1, createdAt: -1 });
 attendanceSchema.index({ date: -1, createdAt: -1 });
 attendanceSchema.index({ user: 1, date: -1, createdAt: -1 });
 attendanceSchema.index({ status: 1 });

@@ -18,11 +18,13 @@
   "license": "ISC",
   "description": "RFID Attendance System Backend",
   "dependencies": {
+    "cloudinary": "^2.11.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "mongoose": "^8.20.2",
-    "multer": "^2.0.2"
+    "multer": "^2.0.2",
+    "multer-storage-cloudinary": "^4.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.11"

@@ -1,6 +1,7 @@
 import User from "../models/User.js";
 import Attendance from "../models/Attendance.js";
 import Leave from "../models/Leave.js";
+import mongoose from "mongoose";
 import { getISTDate, getISTTime, parseDeviceTime, formatTimeForDisplay } from "../utils/istTime.js";
 import { normalizeUID, createUIDRegex } from "../utils/lazyAttendance.js";
 
@@ -12,6 +13,8 @@ const getPagination = (query) => {
   const limit = Math.min(Math.max(parseInt(query.limit, 10) || DEFAULT_LIMIT, 1), MAX_LIMIT);
   return { page, limit, skip: (page - 1) * limit };
 };
+
+const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
 const formatAttendanceRecord = (record) => ({
   ...record,
@@ -57,13 +60,15 @@ export const scanCard = async (req, res) => {
     const cleanUID = normalizeUID(uid);
     let user = await User.findOne({ uid: cleanUID })
       .select("name uid currentShift")
-      .populate("currentShift", "startTime graceMinutes minimumHours");
+      .populate("currentShift", "startTime graceMinutes minimumHours")
+      .lean();
 
     if (!user) {
       const uidRegex = createUIDRegex(uid);
       user = await User.findOne({ uid: uidRegex })
         .select("name uid currentShift")
-        .populate("currentShift", "startTime graceMinutes minimumHours");
+        .populate("currentShift", "startTime graceMinutes minimumHours")
+        .lean();
     }
 
     if (!user) {
@@ -86,7 +91,8 @@ export const scanCard = async (req, res) => {
       return res.json({ success: false, reason: "ON_LEAVE", message: `${user.name} is on approved leave today` });
     }
 
-    let attendance = await Attendance.findOne({ user: user._id, date: attendanceDate });
+    let attendance = await Attendance.findOne({ user: user._id, date: attendanceDate })
+      .select("checkIn checkOut lastScanAt scanStatus status workMinutes");
 
     if (attendance && attendance.lastScanAt) {
       const timeDiff = (now - attendance.lastScanAt) / 1000;
@@ -208,20 +214,37 @@ export const getTodayAttendance = async (req, res) => {
 export const getMonthlyAttendance = async (req, res) => {
   try {
     const month = req.query.month || getISTDate().slice(0, 7);
+    const { page, limit, skip } = getPagination(req.query);
 
     if (!month || !/^\d{4}-\d{2}$/.test(month)) {
       return res.status(400).json({ success: false, message: "Month format should be YYYY-MM" });
     }
 
     const { startDate, endDate } = getMonthRange(month);
+    const query = { date: { $gte: startDate, $lte: endDate } };
 
-    const attendance = await Attendance.find({ date: { $gte: startDate, $lte: endDate } })
-      .select("user date checkIn checkOut scanStatus status workMinutes isLate createdAt")
-      .populate("user", "name uid employeeId")
-      .sort({ date: 1, createdAt: -1 })
-      .lean();
+    const [attendance, total] = await Promise.all([
+      Attendance.find(query)
+        .select("user date checkIn checkOut scanStatus status workMinutes isLate createdAt")
+        .populate("user", "name uid employeeId role")
+        .sort({ date: 1, createdAt: -1 })
+        .limit(limit)
+        .skip(skip)
+        .lean(),
+      Attendance.countDocuments(query)
+    ]);
 
-    res.json({ success: true, month, count: attendance.length, data: attendance });
+    res.json({
+      success: true,
+      month,
+      count: attendance.length,
+      data: attendance,
+      pagination: {
+        current: page,
+        total: Math.ceil(total / limit),
+        count: attendance.length
+      }
+    });
   } catch (error) {
     console.error("❌ Monthly Attendance Error:", error);
     res.status(500).json({ success: false, message: "Failed to fetch monthly attendance" });
@@ -234,13 +257,21 @@ export const getUserAttendance = async (req, res) => {
     const { month } = req.query;
     const { page, limit, skip } = getPagination(req.query);
 
+    if (!isValidObjectId(userId)) {
+      return res.status(400).json({ success: false, message: "Invalid user id" });
+    }
+
+    if (month && !/^\d{4}-\d{2}$/.test(month)) {
+      return res.status(400).json({ success: false, message: "Month format should be YYYY-MM" });
+    }
+
     const user = await User.findById(userId).select("name uid employeeId").lean();
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
     const filter = { user: userId };
-    if (month && /^\d{4}-\d{2}$/.test(month)) {
+    if (month) {
       const { startDate, endDate } = getMonthRange(month);
       filter.date = { $gte: startDate, $lte: endDate };
     }
@@ -248,7 +279,7 @@ export const getUserAttendance = async (req, res) => {
     const [attendance, total] = await Promise.all([
       Attendance.find(filter)
         .select("date checkIn checkOut scanStatus status workMinutes isLate createdAt")
-        .sort({ date: -1 })
+        .sort({ date: -1, createdAt: -1 })
         .limit(limit)
         .skip(skip)
         .lean(),
@@ -271,6 +302,10 @@ export const getAttendance = async (req, res) => {
   try {
     const { userId } = req.query;
     const { page, limit, skip } = getPagination(req.query);
+
+    if (userId && !isValidObjectId(userId)) {
+      return res.status(400).json({ success: false, message: "Invalid user id" });
+    }
     
     const query = userId ? { user: userId } : {};
     
@@ -309,6 +344,10 @@ export const getAttendanceWithFilters = async (req, res) => {
     const { date, employeeId, startDate, endDate } = req.query;
     const { page, limit, skip } = getPagination(req.query);
     let filter = {};
+
+    if (employeeId && !isValidObjectId(employeeId)) {
+      return res.status(400).json({ success: false, message: "Invalid employee id" });
+    }
 
     if (date) {
       filter.date = date;
@@ -359,6 +398,10 @@ export const getMonthlyAttendanceSummary = async (req, res) => {
 
     if (!month || !/^\d{4}-\d{2}$/.test(month)) {
       return res.status(400).json({ success: false, message: "Month format should be YYYY-MM" });
+    }
+
+    if (employeeId && !isValidObjectId(employeeId)) {
+      return res.status(400).json({ success: false, message: "Invalid employee id" });
     }
 
     const { startDate, endDate } = getMonthRange(month);
