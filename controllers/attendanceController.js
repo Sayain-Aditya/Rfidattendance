@@ -1,9 +1,34 @@
 import User from "../models/User.js";
 import Attendance from "../models/Attendance.js";
 import Leave from "../models/Leave.js";
-import Shift from "../models/Shift.js";
 import { getISTDate, getISTTime, parseDeviceTime, formatTimeForDisplay } from "../utils/istTime.js";
 import { normalizeUID, createUIDRegex } from "../utils/lazyAttendance.js";
+
+const DEFAULT_LIMIT = 50;
+const MAX_LIMIT = 200;
+
+const getPagination = (query) => {
+  const page = Math.max(parseInt(query.page, 10) || 1, 1);
+  const limit = Math.min(Math.max(parseInt(query.limit, 10) || DEFAULT_LIMIT, 1), MAX_LIMIT);
+  return { page, limit, skip: (page - 1) * limit };
+};
+
+const formatAttendanceRecord = (record) => ({
+  ...record,
+  checkIn: formatTimeForDisplay(record.checkIn),
+  checkOut: formatTimeForDisplay(record.checkOut)
+});
+
+const getMonthRange = (month) => {
+  const year = parseInt(month.split("-")[0], 10);
+  const monthNum = parseInt(month.split("-")[1], 10);
+  const daysInMonth = new Date(year, monthNum, 0).getDate();
+
+  return {
+    startDate: `${month}-01`,
+    endDate: `${month}-${daysInMonth.toString().padStart(2, "0")}`
+  };
+};
 
 // Convert "HH:MM" or "09:30 AM" to total minutes
 const toMinutes = (timeStr) => {
@@ -29,8 +54,17 @@ export const scanCard = async (req, res) => {
       return res.status(400).json({ success: false, message: "UID is required" });
     }
 
-    const uidRegex = createUIDRegex(uid);
-    const user = await User.findOne({ uid: uidRegex }).populate('currentShift');
+    const cleanUID = normalizeUID(uid);
+    let user = await User.findOne({ uid: cleanUID })
+      .select("name uid currentShift")
+      .populate("currentShift", "startTime graceMinutes minimumHours");
+
+    if (!user) {
+      const uidRegex = createUIDRegex(uid);
+      user = await User.findOne({ uid: uidRegex })
+        .select("name uid currentShift")
+        .populate("currentShift", "startTime graceMinutes minimumHours");
+    }
 
     if (!user) {
       return res.json({ success: false, reason: "INVALID_CARD", message: "Invalid Card - User not registered" });
@@ -41,7 +75,7 @@ export const scanCard = async (req, res) => {
     const now = new Date();
 
     // Check if employee is on approved leave today
-    const onLeave = await Leave.findOne({
+    const onLeave = await Leave.exists({
       user: user._id,
       status: "APPROVED",
       startDate: { $lte: attendanceDate },
@@ -149,15 +183,12 @@ export const getTodayAttendance = async (req, res) => {
     const today = getISTDate();
     
     const attendance = await Attendance.find({ date: today })
+      .select("user date checkIn checkOut scanStatus status workMinutes isLate createdAt")
       .populate("user", "name uid role")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
-    // Format times for display
-    const formattedAttendance = attendance.map(record => ({
-      ...record.toObject(),
-      checkIn: formatTimeForDisplay(record.checkIn),
-      checkOut: formatTimeForDisplay(record.checkOut)
-    }));
+    const formattedAttendance = attendance.map(formatAttendanceRecord);
 
     res.json({
       success: true,
@@ -176,124 +207,89 @@ export const getTodayAttendance = async (req, res) => {
 
 export const getMonthlyAttendance = async (req, res) => {
   try {
-    const { month } = req.query;
-    
+    const month = req.query.month || getISTDate().slice(0, 7);
+
     if (!month || !/^\d{4}-\d{2}$/.test(month)) {
-      return res.status(400).json({
-        success: false,
-        message: "Month format should be YYYY-MM"
-      });
+      return res.status(400).json({ success: false, message: "Month format should be YYYY-MM" });
     }
 
-    const startDate = `${month}-01`;
-    const year = parseInt(month.split('-')[0]);
-    const monthNum = parseInt(month.split('-')[1]);
-    const daysInMonth = new Date(year, monthNum, 0).getDate();
-    const endDate = `${month}-${daysInMonth.toString().padStart(2, '0')}`;
+    const { startDate, endDate } = getMonthRange(month);
 
-    const attendance = await Attendance.find({
-      date: { $gte: startDate, $lte: endDate }
-    })
-    .populate("user", "name uid")
-    .sort({ date: 1, createdAt: 1 });
+    const attendance = await Attendance.find({ date: { $gte: startDate, $lte: endDate } })
+      .select("user date checkIn checkOut scanStatus status workMinutes isLate createdAt")
+      .populate("user", "name uid employeeId")
+      .sort({ date: 1, createdAt: -1 })
+      .lean();
 
-    const summary = {};
-    attendance.forEach(record => {
-      const userId = record.user._id.toString();
-      if (!summary[userId]) {
-        summary[userId] = {
-          user: record.user,
-          totalDays: 0,
-          presentDays: 0,
-          absentDays: 0,
-          records: []
-        };
-      }
-      summary[userId].totalDays++;
-      if (record.status === "PRESENT" || record.status === "OUT") {
-        summary[userId].presentDays++;
-      } else {
-        summary[userId].absentDays++;
-      }
-      summary[userId].records.push(record);
-    });
-
-    res.json({
-      success: true,
-      month,
-      summary: Object.values(summary)
-    });
+    res.json({ success: true, month, count: attendance.length, data: attendance });
   } catch (error) {
     console.error("❌ Monthly Attendance Error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch monthly attendance"
-    });
+    res.status(500).json({ success: false, message: "Failed to fetch monthly attendance" });
   }
 };
 
 export const getUserAttendance = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { page = 1, limit = 50 } = req.query;
+    const { month } = req.query;
+    const { page, limit, skip } = getPagination(req.query);
 
-    const user = await User.findById(userId);
+    const user = await User.findById(userId).select("name uid employeeId").lean();
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    const attendance = await Attendance.find({ user: userId })
-      .sort({ date: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+    const filter = { user: userId };
+    if (month && /^\d{4}-\d{2}$/.test(month)) {
+      const { startDate, endDate } = getMonthRange(month);
+      filter.date = { $gte: startDate, $lte: endDate };
+    }
 
-    const total = await Attendance.countDocuments({ user: userId });
+    const [attendance, total] = await Promise.all([
+      Attendance.find(filter)
+        .select("date checkIn checkOut scanStatus status workMinutes isLate createdAt")
+        .sort({ date: -1 })
+        .limit(limit)
+        .skip(skip)
+        .lean(),
+      Attendance.countDocuments(filter)
+    ]);
 
     res.json({
       success: true,
-      user: {
-        id: user._id,
-        name: user.name,
-        uid: user.uid
-      },
+      user: { id: user._id, name: user.name, uid: user.uid, employeeId: user.employeeId },
       data: attendance,
-      pagination: {
-        current: parseInt(page),
-        total: Math.ceil(total / limit),
-        count: attendance.length
-      }
+      pagination: { current: page, total: Math.ceil(total / limit), count: attendance.length }
     });
   } catch (error) {
     console.error("❌ User Attendance Error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch user attendance"
-    });
+    res.status(500).json({ success: false, message: "Failed to fetch user attendance" });
   }
 };
 
 export const getAttendance = async (req, res) => {
   try {
-    const { page = 1, limit = 50, userId } = req.query;
+    const { userId } = req.query;
+    const { page, limit, skip } = getPagination(req.query);
     
     const query = userId ? { user: userId } : {};
     
-    const attendance = await Attendance.find(query)
-      .populate("user", "name uid role")
-      .sort({ date: -1, createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
-
-    const total = await Attendance.countDocuments(query);
+    const [attendance, total] = await Promise.all([
+      Attendance.find(query)
+        .select("user date checkIn checkOut scanStatus status workMinutes isLate createdAt")
+        .populate("user", "name uid role")
+        .sort({ date: -1, createdAt: -1 })
+        .limit(limit)
+        .skip(skip)
+        .lean(),
+      Attendance.countDocuments(query)
+    ]);
 
     res.json({
       success: true,
       data: attendance,
       pagination: {
-        current: parseInt(page),
+        current: page,
         total: Math.ceil(total / limit),
         count: attendance.length
       }
@@ -311,6 +307,7 @@ export const getAttendance = async (req, res) => {
 export const getAttendanceWithFilters = async (req, res) => {
   try {
     const { date, employeeId, startDate, endDate } = req.query;
+    const { page, limit, skip } = getPagination(req.query);
     let filter = {};
 
     if (date) {
@@ -328,18 +325,28 @@ export const getAttendanceWithFilters = async (req, res) => {
       filter.user = employeeId;
     }
 
-    const attendance = await Attendance.find(filter)
-      .populate('user', 'name email')
-      .sort({ date: -1 });
+    const [attendance, total] = await Promise.all([
+      Attendance.find(filter)
+        .select("user date checkIn checkOut scanStatus status workMinutes isLate createdAt")
+        .populate("user", "name email uid role")
+        .sort({ date: -1, createdAt: -1 })
+        .limit(limit)
+        .skip(skip)
+        .lean(),
+      Attendance.countDocuments(filter)
+    ]);
 
-    // Format times for display
-    const formattedAttendance = attendance.map(record => ({
-      ...record.toObject(),
-      checkIn: formatTimeForDisplay(record.checkIn),
-      checkOut: formatTimeForDisplay(record.checkOut)
-    }));
+    const formattedAttendance = attendance.map(formatAttendanceRecord);
 
-    res.json({ success: true, data: formattedAttendance });
+    res.json({
+      success: true,
+      data: formattedAttendance,
+      pagination: {
+        current: page,
+        total: Math.ceil(total / limit),
+        count: formattedAttendance.length
+      }
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -348,46 +355,71 @@ export const getAttendanceWithFilters = async (req, res) => {
 // Get monthly summary
 export const getMonthlyAttendanceSummary = async (req, res) => {
   try {
-    const { month, year, employeeId } = req.query;
-    const startDate = `${year}-${month.padStart(2, '0')}-01`;
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const endDate = `${year}-${month.padStart(2, '0')}-${daysInMonth.toString().padStart(2, '0')}`;
-    
-    let filter = {
-      date: { $gte: startDate, $lte: endDate }
-    };
-    
-    if (employeeId) {
-      filter.user = employeeId;
+    const { month, employeeId } = req.query;
+
+    if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+      return res.status(400).json({ success: false, message: "Month format should be YYYY-MM" });
     }
 
-    const attendance = await Attendance.find(filter)
-      .populate('user', 'name email');
+    const { startDate, endDate } = getMonthRange(month);
+
+    const todayIST = getISTDate();
+    const effectiveEndDate = endDate > todayIST ? todayIST : endDate;
+    const totalWorkingDays = Math.max(0,
+      Math.floor((new Date(effectiveEndDate) - new Date(startDate)) / (1000 * 60 * 60 * 24)) + 1
+    );
+
+    const [attendance, employees] = await Promise.all([
+      Attendance.find({ date: { $gte: startDate, $lte: effectiveEndDate }, ...(employeeId && { user: employeeId }) })
+        .select("user status isLate")
+        .populate("user", "name uid employeeId")
+        .lean(),
+      employeeId ? [] : User.find({ role: "Employee" }, "name uid employeeId").lean()
+    ]);
 
     const summary = {};
-    const totalDays = daysInMonth;
 
-    // Group by employee
+    if (!employeeId) {
+      employees.forEach(emp => {
+        summary[emp._id.toString()] = {
+          user: { _id: emp._id, name: emp.name, uid: emp.uid, employeeId: emp.employeeId },
+          totalWorkingDays,
+          presentDays: 0,
+          absentDays: 0,
+          halfDays: 0,
+          lateDays: 0,
+          recordedDays: 0
+        };
+      });
+    }
+
     attendance.forEach(record => {
       const userId = record.user._id.toString();
       if (!summary[userId]) {
         summary[userId] = {
-          employee: record.user,
-          totalWorkingDays: totalDays,
+          user: { _id: record.user._id, name: record.user.name, uid: record.user.uid, employeeId: record.user.employeeId },
+          totalWorkingDays,
           presentDays: 0,
           absentDays: 0,
-          leaveDays: 0
+          halfDays: 0,
+          lateDays: 0,
+          recordedDays: 0
         };
       }
-      
-      if (record.status === 'PRESENT' || record.status === 'OUT') {
-        summary[userId].presentDays++;
-      } else if (record.status === 'ABSENT') {
-        summary[userId].absentDays++;
-      }
+      summary[userId].recordedDays++;
+      const s = record.status;
+      if (s === "PRESENT" || s === "LATE" || s === "IN") summary[userId].presentDays++;
+      else if (s === "HALF_DAY") { summary[userId].presentDays++; summary[userId].halfDays++; }
+      else if (s === "ABSENT") summary[userId].absentDays++;
+      if (record.isLate) summary[userId].lateDays++;
     });
 
-    res.json({ success: true, data: Object.values(summary) });
+    Object.values(summary).forEach(s => {
+      s.absentDays += totalWorkingDays - s.recordedDays;
+      delete s.recordedDays;
+    });
+
+    res.json({ success: true, month, totalWorkingDays, data: Object.values(summary) });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

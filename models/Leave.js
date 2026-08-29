@@ -28,5 +28,6 @@ const leaveSchema = new mongoose.Schema({
 
 leaveSchema.index({ user: 1 });
 leaveSchema.index({ status: 1 });
+leaveSchema.index({ user: 1, status: 1, startDate: 1, endDate: 1 });
 
 export default mongoose.model("Leave", leaveSchema);
