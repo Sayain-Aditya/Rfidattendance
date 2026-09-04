@@ -4,6 +4,7 @@ import {
   getNextEmployeeId,
   peekNextEmployeeId,
 } from "../services/employeeService.js";
+import { uploadToCloudinary, deleteFromCloudinary } from "../config/cloudinary.js";
 
 export const registerUser = async (req, res) => {
   try {
@@ -16,7 +17,11 @@ export const registerUser = async (req, res) => {
       uid,
       role = "Employee",
     } = req.body;
-    const profileImage = req.file ? req.file.filename : null;
+    let profileImage = null;
+    if (req.file) {
+      const result = await uploadToCloudinary(req.file.buffer, "rfid-attendance/profiles");
+      profileImage = result.secure_url;
+    }
 
     if (!name || !email || !password || !address || !phoneNumber || !uid) {
       return res.status(400).json({
@@ -286,7 +291,6 @@ export const updateUser = async (req, res) => {
   try {
     const { userId } = req.params;
     const { name, email, address, phoneNumber, currentShift, role } = req.body;
-    const profileImage = req.file ? req.file.filename : null;
 
     const user = await User.findById(userId);
     if (!user) {
@@ -296,13 +300,21 @@ export const updateUser = async (req, res) => {
       });
     }
 
+    if (req.file) {
+      if (user.profileImage) {
+        const publicId = user.profileImage.split("/").slice(-2).join("/").split(".")[0];
+        await deleteFromCloudinary(publicId).catch(() => {});
+      }
+      const result = await uploadToCloudinary(req.file.buffer, "rfid-attendance/profiles");
+      user.profileImage = result.secure_url;
+    }
+
     if (name) user.name = name;
     if (email) user.email = email;
     if (phoneNumber) user.phoneNumber = phoneNumber;
     if (address) user.address = address;
     if (currentShift !== undefined) user.currentShift = currentShift;
     if (role) user.role = role;
-    if (profileImage) user.profileImage = profileImage;
 
     await user.save();
 
