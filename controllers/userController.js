@@ -307,7 +307,7 @@ export const getUser = async (req, res) => {
 export const updateUser = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { name, email, address, phoneNumber, role } = req.body;
+    const { name, email, address, phoneNumber, role, profileImage } = req.body;
 
     const user = await User.findById(userId);
     if (!user) {
@@ -331,6 +331,7 @@ export const updateUser = async (req, res) => {
     if (phoneNumber) user.phoneNumber = phoneNumber;
     if (address) user.address = address;
     if (role) user.role = role;
+    if (profileImage) user.profileImage = profileImage;
 
     await user.save();
 

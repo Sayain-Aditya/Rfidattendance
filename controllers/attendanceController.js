@@ -16,7 +16,9 @@ export const scanCard = async (req, res) => {
     const { uid, deviceTime } = req.body;
 
     if (!uid) {
-      return res.status(400).json({ success: false, message: "UID is required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "UID is required" });
     }
 
     const cleanUID = normalizeUID(uid);
@@ -28,7 +30,11 @@ export const scanCard = async (req, res) => {
     }
 
     if (!user) {
-      return res.json({ success: false, reason: "INVALID_CARD", message: "Invalid Card - User not registered" });
+      return res.json({
+        success: false,
+        reason: "INVALID_CARD",
+        message: "Invalid Card - User not registered",
+      });
     }
 
     const attendanceDate = getISTDate();
@@ -43,7 +49,11 @@ export const scanCard = async (req, res) => {
     });
 
     if (onLeave) {
-      return res.json({ success: false, reason: "ON_LEAVE", message: `${user.name} is on approved leave today` });
+      return res.json({
+        success: false,
+        reason: "ON_LEAVE",
+        message: `${user.name} is on approved leave today`,
+      });
     }
 
     let attendance = await Attendance.findOne({
@@ -54,7 +64,11 @@ export const scanCard = async (req, res) => {
     if (attendance && attendance.lastScanAt) {
       const timeDiff = (now - attendance.lastScanAt) / 1000;
       if (timeDiff < 10) {
-        return res.json({ success: false, reason: "DUPLICATE_SCAN", message: "Duplicate scan - Please wait 10 seconds" });
+        return res.json({
+          success: false,
+          reason: "DUPLICATE_SCAN",
+          message: "Duplicate scan - Please wait 10 seconds",
+        });
       }
     }
 
@@ -110,10 +124,16 @@ export const scanCard = async (req, res) => {
       });
     }
 
-    return res.json({ success: false, reason: "ALREADY_OUT", message: "Attendance already completed for today" });
+    return res.json({
+      success: false,
+      reason: "ALREADY_OUT",
+      message: "Attendance already completed for today",
+    });
   } catch (error) {
     console.error("❌ Scan Card Error:", error);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -122,7 +142,9 @@ export const getTodayAttendance = async (req, res) => {
     const today = getISTDate();
 
     const attendance = await Attendance.find({ date: today })
-      .select("user date checkIn checkOut scanStatus status workMinutes isLate createdAt")
+      .select(
+        "user date checkIn checkOut scanStatus status workMinutes isLate createdAt",
+      )
       .populate("user", "name uid role")
       .sort({ createdAt: -1 })
       .lean();
@@ -135,7 +157,9 @@ export const getTodayAttendance = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Today Attendance Error:", error);
-    res.status(500).json({ success: false, message: "Failed to fetch today's attendance" });
+    res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch today's attendance" });
   }
 };
 
@@ -145,7 +169,9 @@ export const getMonthlyAttendance = async (req, res) => {
     const { page, limit, skip } = getPagination(req.query);
 
     if (!month || !/^\d{4}-\d{2}$/.test(month)) {
-      return res.status(400).json({ success: false, message: "Month format should be YYYY-MM" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Month format should be YYYY-MM" });
     }
 
     const { startDate, endDate } = getMonthRange(month);
@@ -153,7 +179,9 @@ export const getMonthlyAttendance = async (req, res) => {
 
     const [attendance, total] = await Promise.all([
       Attendance.find(query)
-        .select("user date checkIn checkOut scanStatus status workMinutes isLate createdAt")
+        .select(
+          "user date checkIn checkOut scanStatus status workMinutes isLate createdAt",
+        )
         .populate("user", "name uid employeeId role")
         .sort({ date: 1, createdAt: -1 })
         .limit(limit)
@@ -167,11 +195,17 @@ export const getMonthlyAttendance = async (req, res) => {
       month,
       count: attendance.length,
       data: attendance,
-      pagination: { current: page, total: Math.ceil(total / limit), count: attendance.length },
+      pagination: {
+        current: page,
+        total: Math.ceil(total / limit),
+        count: attendance.length,
+      },
     });
   } catch (error) {
     console.error("❌ Monthly Attendance Error:", error);
-    res.status(500).json({ success: false, message: "Failed to fetch monthly attendance" });
+    res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch monthly attendance" });
   }
 };
 
@@ -182,18 +216,24 @@ export const getUserAttendance = async (req, res) => {
     const { page, limit, skip } = getPagination(req.query);
 
     if (!isValidObjectId(userId)) {
-      return res.status(400).json({ success: false, message: "Invalid user id" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid user id" });
     }
 
     if (month && !/^\d{4}-\d{2}$/.test(month)) {
-      return res.status(400).json({ success: false, message: "Month format should be YYYY-MM" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Month format should be YYYY-MM" });
     }
 
     const user = await User.findById(userId)
-      .select("name uid email address phoneNumber employeeId profileImage")
+      .select("name uid email address phoneNumber employeeId profileImage role")
       .lean();
     if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
 
     const filter = { user: userId };
@@ -204,7 +244,9 @@ export const getUserAttendance = async (req, res) => {
 
     const [attendance, total] = await Promise.all([
       Attendance.find(filter)
-        .select("date checkIn checkOut scanStatus status workMinutes isLate createdAt")
+        .select(
+          "date checkIn checkOut scanStatus status workMinutes isLate createdAt",
+        )
         .sort({ date: -1, createdAt: -1 })
         .limit(limit)
         .skip(skip)
@@ -213,7 +255,13 @@ export const getUserAttendance = async (req, res) => {
     ]);
 
     const summary = {
-      totalWorkingDays: month ? new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate() : 0,
+      totalWorkingDays: month
+        ? new Date(
+            Number(month.slice(0, 4)),
+            Number(month.slice(5, 7)),
+            0,
+          ).getDate()
+        : 0,
       presentDays: 0,
       absentDays: 0,
       halfDays: 0,
@@ -223,21 +271,40 @@ export const getUserAttendance = async (req, res) => {
     attendance.forEach((record) => {
       const s = record.status;
       if (s === "PRESENT" || s === "IN" || s === "LATE") summary.presentDays++;
-      if (s === "HALF_DAY") { summary.presentDays++; summary.halfDays++; }
+      if (s === "HALF_DAY") {
+        summary.presentDays++;
+        summary.halfDays++;
+      }
       if (s === "ABSENT") summary.absentDays++;
       if (record.isLate) summary.lateDays++;
     });
 
     res.json({
       success: true,
-      user: { id: user._id, name: user.name, uid: user.uid, employeeId: user.employeeId, email: user.email, address: user.address, phoneNumber: user.phoneNumber, profileImage: user.profileImage },
+      user: {
+        _id: user._id,
+        name: user.name,
+        uid: user.uid,
+        employeeId: user.employeeId,
+        email: user.email,
+        address: user.address,
+        phoneNumber: user.phoneNumber,
+        profileImage: user.profileImage,
+        role: user.role,
+      },
       data: attendance,
       summary,
-      pagination: { current: page, total: Math.ceil(total / limit), count: attendance.length },
+      pagination: {
+        current: page,
+        total: Math.ceil(total / limit),
+        count: attendance.length,
+      },
     });
   } catch (error) {
     console.error("❌ User Attendance Error:", error);
-    res.status(500).json({ success: false, message: "Failed to fetch user attendance" });
+    res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch user attendance" });
   }
 };
 
@@ -247,14 +314,18 @@ export const getAttendance = async (req, res) => {
     const { page, limit, skip } = getPagination(req.query);
 
     if (userId && !isValidObjectId(userId)) {
-      return res.status(400).json({ success: false, message: "Invalid user id" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid user id" });
     }
 
     const query = userId ? { user: userId } : {};
 
     const [attendance, total] = await Promise.all([
       Attendance.find(query)
-        .select("user date checkIn checkOut scanStatus status workMinutes isLate createdAt")
+        .select(
+          "user date checkIn checkOut scanStatus status workMinutes isLate createdAt",
+        )
         .populate("user", "name uid role")
         .sort({ date: -1, createdAt: -1 })
         .limit(limit)
@@ -266,11 +337,17 @@ export const getAttendance = async (req, res) => {
     res.json({
       success: true,
       data: attendance,
-      pagination: { current: page, total: Math.ceil(total / limit), count: attendance.length },
+      pagination: {
+        current: page,
+        total: Math.ceil(total / limit),
+        count: attendance.length,
+      },
     });
   } catch (error) {
     console.error("❌ Get Attendance Error:", error);
-    res.status(500).json({ success: false, message: "Failed to fetch attendance records" });
+    res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch attendance records" });
   }
 };
 
@@ -281,7 +358,9 @@ export const getAttendanceWithFilters = async (req, res) => {
     let filter = {};
 
     if (employeeId && !isValidObjectId(employeeId)) {
-      return res.status(400).json({ success: false, message: "Invalid employee id" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid employee id" });
     }
 
     if (date) filter.date = date;
@@ -290,7 +369,9 @@ export const getAttendanceWithFilters = async (req, res) => {
 
     const [attendance, total] = await Promise.all([
       Attendance.find(filter)
-        .select("user date checkIn checkOut scanStatus status workMinutes isLate createdAt")
+        .select(
+          "user date checkIn checkOut scanStatus status workMinutes isLate createdAt",
+        )
         .populate("user", "name email uid role")
         .sort({ date: -1, createdAt: -1 })
         .limit(limit)
@@ -304,7 +385,11 @@ export const getAttendanceWithFilters = async (req, res) => {
     res.json({
       success: true,
       data: formattedAttendance,
-      pagination: { current: page, total: Math.ceil(total / limit), count: formattedAttendance.length },
+      pagination: {
+        current: page,
+        total: Math.ceil(total / limit),
+        count: formattedAttendance.length,
+      },
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -316,11 +401,15 @@ export const getMonthlyAttendanceSummary = async (req, res) => {
     const { month, employeeId } = req.query;
 
     if (!month || !/^\d{4}-\d{2}$/.test(month)) {
-      return res.status(400).json({ success: false, message: "Month format should be YYYY-MM" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Month format should be YYYY-MM" });
     }
 
     if (employeeId && !isValidObjectId(employeeId)) {
-      return res.status(400).json({ success: false, message: "Invalid employee id" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid employee id" });
     }
 
     const { startDate, endDate } = getMonthRange(month);
@@ -328,7 +417,10 @@ export const getMonthlyAttendanceSummary = async (req, res) => {
     const effectiveEndDate = endDate > todayIST ? todayIST : endDate;
     const totalWorkingDays = Math.max(
       0,
-      Math.floor((new Date(effectiveEndDate) - new Date(startDate)) / (1000 * 60 * 60 * 24)) + 1,
+      Math.floor(
+        (new Date(effectiveEndDate) - new Date(startDate)) /
+          (1000 * 60 * 60 * 24),
+      ) + 1,
     );
 
     const [attendance, employees] = await Promise.all([
@@ -339,7 +431,9 @@ export const getMonthlyAttendanceSummary = async (req, res) => {
         .select("user status isLate")
         .populate("user", "name uid employeeId")
         .lean(),
-      employeeId ? [] : User.find({ role: "Employee" }, "name uid employeeId").lean(),
+      employeeId
+        ? []
+        : User.find({ role: "Employee" }, "name uid employeeId").lean(),
     ]);
 
     const summary = {};
@@ -347,8 +441,18 @@ export const getMonthlyAttendanceSummary = async (req, res) => {
     if (!employeeId) {
       employees.forEach((emp) => {
         summary[emp._id.toString()] = {
-          user: { _id: emp._id, name: emp.name, uid: emp.uid, employeeId: emp.employeeId },
-          totalWorkingDays, presentDays: 0, absentDays: 0, halfDays: 0, lateDays: 0, recordedDays: 0,
+          user: {
+            _id: emp._id,
+            name: emp.name,
+            uid: emp.uid,
+            employeeId: emp.employeeId,
+          },
+          totalWorkingDays,
+          presentDays: 0,
+          absentDays: 0,
+          halfDays: 0,
+          lateDays: 0,
+          recordedDays: 0,
         };
       });
     }
@@ -357,15 +461,28 @@ export const getMonthlyAttendanceSummary = async (req, res) => {
       const uid = record.user._id.toString();
       if (!summary[uid]) {
         summary[uid] = {
-          user: { _id: record.user._id, name: record.user.name, uid: record.user.uid, employeeId: record.user.employeeId },
-          totalWorkingDays, presentDays: 0, absentDays: 0, halfDays: 0, lateDays: 0, recordedDays: 0,
+          user: {
+            _id: record.user._id,
+            name: record.user.name,
+            uid: record.user.uid,
+            employeeId: record.user.employeeId,
+          },
+          totalWorkingDays,
+          presentDays: 0,
+          absentDays: 0,
+          halfDays: 0,
+          lateDays: 0,
+          recordedDays: 0,
         };
       }
       summary[uid].recordedDays++;
       const s = record.status;
-      if (s === "PRESENT" || s === "LATE" || s === "IN") summary[uid].presentDays++;
-      else if (s === "HALF_DAY") { summary[uid].presentDays++; summary[uid].halfDays++; }
-      else if (s === "ABSENT") summary[uid].absentDays++;
+      if (s === "PRESENT" || s === "LATE" || s === "IN")
+        summary[uid].presentDays++;
+      else if (s === "HALF_DAY") {
+        summary[uid].presentDays++;
+        summary[uid].halfDays++;
+      } else if (s === "ABSENT") summary[uid].absentDays++;
       if (record.isLate) summary[uid].lateDays++;
     });
 
@@ -374,7 +491,12 @@ export const getMonthlyAttendanceSummary = async (req, res) => {
       delete s.recordedDays;
     });
 
-    res.json({ success: true, month, totalWorkingDays, data: Object.values(summary) });
+    res.json({
+      success: true,
+      month,
+      totalWorkingDays,
+      data: Object.values(summary),
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
